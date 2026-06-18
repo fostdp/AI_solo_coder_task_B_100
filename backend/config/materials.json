@@ -1,0 +1,94 @@
+{
+  "version": "1.1.0",
+  "description": "轒辒车防护材料数据库 - 含弹塑性与Johnson-Cook高应变率参数",
+  "materials": {
+    "cowhide": {
+      "display_name": "牛皮",
+      "density": 860.0,
+      "youngs_modulus_gpa": 0.15,
+      "poisson_ratio": 0.40,
+      "yield_strength_mpa": 25.0,
+      "ultimate_strength_mpa": 60.0,
+      "toughness_mj_m3": 15.0,
+      "specific_energy_absorption_kj_kg": 80.0,
+      "cost_per_unit": 3.0,
+      "durability_base": 0.4,
+      "johnson_cook": {
+        "A_pa": 20000000.0,
+        "B_pa": 50000000.0,
+        "n": 0.55,
+        "C": 0.035,
+        "m": 1.2,
+        "T_melt_K": 500.0,
+        "T_ref_K": 298.15,
+        "eps_dot_0": 1.0
+      }
+    },
+    "wood": {
+      "display_name": "木材",
+      "density": 650.0,
+      "youngs_modulus_gpa": 10.0,
+      "poisson_ratio": 0.35,
+      "yield_strength_mpa": 60.0,
+      "ultimate_strength_mpa": 120.0,
+      "toughness_mj_m3": 10.0,
+      "specific_energy_absorption_kj_kg": 50.0,
+      "cost_per_unit": 1.0,
+      "durability_base": 0.6,
+      "johnson_cook": {
+        "A_pa": 60000000.0,
+        "B_pa": 120000000.0,
+        "n": 0.45,
+        "C": 0.06,
+        "m": 1.0,
+        "T_melt_K": 600.0,
+        "T_ref_K": 298.15,
+        "eps_dot_0": 1.0
+      }
+    },
+    "iron": {
+      "display_name": "铸铁",
+      "density": 7850.0,
+      "youngs_modulus_gpa": 206.0,
+      "poisson_ratio": 0.29,
+      "yield_strength_mpa": 235.0,
+      "ultimate_strength_mpa": 400.0,
+      "toughness_mj_m3": 80.0,
+      "specific_energy_absorption_kj_kg": 200.0,
+      "cost_per_unit": 10.0,
+      "durability_base": 0.9,
+      "johnson_cook": {
+        "A_pa": 235000000.0,
+        "B_pa": 380000000.0,
+        "n": 0.32,
+        "C": 0.022,
+        "m": 0.55,
+        "T_melt_K": 1811.0,
+        "T_ref_K": 298.15,
+        "eps_dot_0": 1.0
+      }
+    },
+    "composite": {
+      "display_name": "复合材料(皮-木-铁层合)",
+      "density": 900.0,
+      "youngs_modulus_gpa": 15.0,
+      "poisson_ratio": 0.33,
+      "yield_strength_mpa": 120.0,
+      "ultimate_strength_mpa": 250.0,
+      "toughness_mj_m3": 45.0,
+      "specific_energy_absorption_kj_kg": 300.0,
+      "cost_per_unit": 5.0,
+      "durability_base": 0.8,
+      "johnson_cook": {
+        "A_pa": 120000000.0,
+        "B_pa": 220000000.0,
+        "n": 0.40,
+        "C": 0.03,
+        "m": 0.85,
+        "T_melt_K": 700.0,
+        "T_ref_K": 298.15,
+        "eps_dot_0": 1.0
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "version": "1.1.0",
+  "description": "轒辒车结构防护仿真系统 - 全局系统配置",
+  "http": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "max_request_size_bytes": 65536
+  },
+  "clickhouse": {
+    "host": "127.0.0.1",
+    "http_port": 8123,
+    "tcp_port": 9000,
+    "user": "default",
+    "password": "",
+    "database": "fenyun_vehicle",
+    "connection_timeout_ms": 3000
+  },
+  "mqtt": {
+    "broker_url": "tcp://127.0.0.1:1883",
+    "client_id": "fenyun_backend",
+    "username": "",
+    "password": "",
+    "qos": 1,
+    "topic_prefix": "fenyun/vehicle"
+  },
+  "simulation": {
+    "threads": 2,
+    "queue_capacity": 1024,
+    "default_roof_length_m": 6.5,
+    "default_roof_width_m": 2.8,
+    "default_grid_size": 10,
+    "jc_plastic_strain_bisection_iterations": 60
+  },
+  "alarm": {
+    "threads": 1,
+    "queue_capacity": 512,
+    "deformation_threshold_mm": 15.0,
+    "penetration_threshold_ratio": 0.9,
+    "stress_threshold_mpa": 200.0,
+    "deformation_warn_ratio": 0.7,
+    "levels": {
+      "info": 1,
+      "warning": 2,
+      "critical": 3,
+      "emergency": 4
+    }
+  },
+  "protection_optimizer": {
+    "queue_capacity": 128,
+    "threads": 1,
+    "auto_reevaluate_seconds": 300
+  },
+  "dtu_receiver": {
+    "report_interval_seconds": 60,
+    "vehicle_count": 3,
+    "default_material": "wood",
+    "default_protection_thickness_mm": 80.0
+  }
+}

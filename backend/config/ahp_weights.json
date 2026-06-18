@@ -1,0 +1,58 @@
+{
+  "version": "1.1.0",
+  "description": "AHP层次分析法配置 - 准则成对比较矩阵 + 群决策参数",
+  "criteria": [
+    "energy_absorption",
+    "structural_strength",
+    "weight_factor",
+    "cost_factor",
+    "durability"
+  ],
+  "criteria_display": {
+    "energy_absorption": "吸能特性",
+    "structural_strength": "结构强度",
+    "weight_factor": "重量因素",
+    "cost_factor": "成本因素",
+    "durability": "耐久性能"
+  },
+  "reference_pairwise_matrix": [
+    [1.0,   1.5,  3.0,  4.0,  2.0],
+    [0.667, 1.0,  2.0,  3.0,  1.5],
+    [0.333, 0.5,  1.0,  2.0,  0.75],
+    [0.25,  0.333,0.5,  1.0,  0.5],
+    [0.5,   0.667,1.333,2.0,  1.0]
+  ],
+  "consistency": {
+    "cr_threshold": 0.10,
+    "auto_correction": true,
+    "auto_correction_cr_target": 0.08,
+    "max_correction_iterations": 80,
+    "correction_step_ratio": 0.15
+  },
+  "group_decision": {
+    "enabled": true,
+    "default_expert_count": 5,
+    "max_expert_count": 10,
+    "expert_divergence": 0.22,
+    "consensus_threshold": 0.75,
+    "aggregation_method": "wggm",
+    "experts_pool": [
+      { "name": "王致远", "title": "军事史研究员", "authority_weight": 0.85 },
+      { "name": "李衡之", "title": "材料力学教授", "authority_weight": 0.95 },
+      { "name": "张仲武", "title": "古建筑结构工程师", "authority_weight": 0.90 },
+      { "name": "陈博约", "title": "考古学院士", "authority_weight": 1.00 },
+      { "name": "周亚夫", "title": "古代兵器史专家", "authority_weight": 0.88 },
+      { "name": "吴季札", "title": "春秋史副研究员", "authority_weight": 0.75 },
+      { "name": "郑工输", "title": "机械工程教授", "authority_weight": 0.92 },
+      { "name": "冯奉世", "title": "军事工程研究员", "authority_weight": 0.87 },
+      { "name": "褚少孙", "title": "史学博士", "authority_weight": 0.70 },
+      { "name": "卫仲卿", "title": "骑兵战术专家", "authority_weight": 0.80 }
+    ]
+  },
+  "evaluation_schemes": [
+    { "material_type": "cowhide",   "thickness_mm": 20.0 },
+    { "material_type": "wood",      "thickness_mm": 64.0 },
+    { "material_type": "iron",      "thickness_mm":  5.0 },
+    { "material_type": "composite", "thickness_mm": 48.0 }
+  ]
+}
