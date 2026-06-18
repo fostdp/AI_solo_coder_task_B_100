@@ -448,6 +448,212 @@ ALTER TABLE alert_records ADD PROJECTION IF NOT EXISTS proj_by_level_type
 );
 
 -- ============================================================
+-- 15. 车辆防护能力对比结果表 (永久保留)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS vehicle_comparison_results (
+    comparison_id       UInt64,
+    timestamp           DateTime64(3, 'UTC'),
+    rock_mass_kg        Float64,
+    rock_velocity_ms    Float64,
+    impact_location_x   Float64,
+    impact_location_y   Float64,
+    temperature_K       Float64,
+    use_johnson_cook    UInt8,
+    best_vehicle_id     LowCardinality(String),
+    comparison_type     LowCardinality(String)  COMMENT 'custom/ancient/cross_era',
+    insights            Array(String)
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (comparison_id, timestamp)
+PRIMARY KEY comparison_id
+TTL timestamp + INTERVAL 2 YEAR
+COMMENT '车辆防护能力对比分析结果(保留2年)'
+SETTINGS index_granularity = 1024;
+
+CREATE TABLE IF NOT EXISTS vehicle_comparison_items (
+    comparison_id       UInt64,
+    vehicle_id          LowCardinality(String),
+    display_name        String,
+    era                 LowCardinality(String)  COMMENT 'ancient/modern',
+    roof_max_deformation_mm   Float64,
+    roof_plastic_strain       Float64,
+    roof_von_mises_stress_mpa Float64,
+    impact_energy_j           Float64,
+    absorbed_energy_j         Float64,
+    damage_level              UInt8,
+    penetration_depth_mm      Float64,
+    is_penetrated             UInt8,
+    failure_mode              LowCardinality(String),
+    protection_efficiency_score  Float64,
+    weight_normalized_score      Float64,
+    cost_normalized_score        Float64,
+    overall_score                Float64,
+    rank_position                UInt8
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(toDateTime(0))
+ORDER BY (comparison_id, rank_position)
+PRIMARY KEY (comparison_id, rank_position)
+COMMENT '车辆对比明细项'
+SETTINGS index_granularity = 1024;
+
+-- ============================================================
+-- 16. 队形优化结果表 (永久保留)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS formation_optimization_results (
+    optimization_id     UInt64,
+    timestamp           DateTime64(3, 'UTC'),
+    vehicle_count       UInt32,
+    wall_height_m       Float64,
+    wall_length_m       Float64,
+    rock_fall_rate      Float64,
+    avg_rock_mass_kg    Float64,
+    best_formation_type LowCardinality(String),
+    best_spacing_m      Float64,
+    best_attack_width_m Float64,
+    survival_probability  Float64,
+    avg_coverage_score    Float64,
+    total_progress_rate   Float64,
+    recommendations       Array(String)
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (optimization_id, timestamp)
+PRIMARY KEY optimization_id
+TTL timestamp + INTERVAL 2 YEAR
+COMMENT '队形优化分析结果(保留2年)'
+SETTINGS index_granularity = 1024;
+
+CREATE TABLE IF NOT EXISTS formation_vehicle_layouts (
+    optimization_id     UInt64,
+    formation_type      LowCardinality(String),
+    vehicle_index       UInt32,
+    vehicle_type        LowCardinality(String),
+    position_x          Float64,
+    position_y          Float64,
+    heading_deg         Float64,
+    spacing_m           Float64,
+    is_lead             UInt8
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(toDateTime(0))
+ORDER BY (optimization_id, formation_type, vehicle_index)
+PRIMARY KEY (optimization_id, formation_type, vehicle_index)
+COMMENT '队形车辆布局明细'
+SETTINGS index_granularity = 2048;
+
+-- ============================================================
+-- 17. 虚拟驾驶用户会话与状态表 (保留30天)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id          String,
+    created_at          DateTime64(3, 'UTC'),
+    last_active_at      DateTime64(3, 'UTC'),
+    user_nickname       String,
+    vehicle_type        LowCardinality(String),
+    total_distance_m    Float64 DEFAULT 0,
+    total_impacts       UInt32 DEFAULT 0,
+    total_damage        Float64 DEFAULT 0,
+    max_health          Float64 DEFAULT 100.0,
+    min_health          Float64 DEFAULT 100.0,
+    status              LowCardinality(String) DEFAULT 'active' COMMENT 'active/finished/destroyed'
+)
+ENGINE = ReplacingMergeTree(last_active_at)
+PARTITION BY toYYYYMM(created_at)
+ORDER BY (session_id, created_at)
+PRIMARY KEY session_id
+TTL created_at + INTERVAL 30 DAY
+COMMENT '虚拟驾驶用户会话(保留30天)'
+SETTINGS index_granularity = 256;
+
+CREATE TABLE IF NOT EXISTS user_vehicle_state_log (
+    session_id          String,
+    timestamp           DateTime64(3, 'UTC'),
+    position_x          Float64,
+    position_y          Float64,
+    heading_deg         Float64,
+    speed_ms            Float64,
+    health_percent      Float64,
+    armor_integrity_percent Float64,
+    impacts_received    UInt32,
+    distance_traveled_m Float64
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (session_id, timestamp)
+TTL timestamp + INTERVAL 7 DAY
+COMMENT '用户车辆状态轨迹日志(保留7天)'
+SETTINGS index_granularity = 4096;
+
+CREATE TABLE IF NOT EXISTS user_rock_attack_log (
+    event_id            UInt64,
+    session_id          String,
+    timestamp           DateTime64(3, 'UTC'),
+    impact_x            Float64,
+    impact_y            Float64,
+    rock_mass_kg        Float64,
+    rock_velocity_ms    Float64,
+    damage_dealt        Float64,
+    is_manual_trigger   UInt8 DEFAULT 0,
+    force_multiplier    Float64 DEFAULT 1.0
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(timestamp)
+ORDER BY (session_id, event_id, timestamp)
+TTL timestamp + INTERVAL 15 DAY
+COMMENT '用户滚石攻击事件日志(保留15天)'
+SETTINGS index_granularity = 4096;
+
+-- ============================================================
+-- 18. 新功能字典表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS dict_vehicle_eras (
+    era_code    LowCardinality(String),
+    name_zh     String,
+    description String
+)
+ENGINE = TinyLog();
+
+INSERT INTO dict_vehicle_eras VALUES
+('ancient', '古代',   '冷兵器时代攻城器械, 使用木材、牛皮、铸铁等原始材料'),
+('modern',  '现代',   '工业时代后装甲车辆, 使用钢、铝合金、复合材料、贫铀等');
+
+CREATE TABLE IF NOT EXISTS dict_vehicle_types (
+    type_code   LowCardinality(String),
+    name_zh     String,
+    era         LowCardinality(String),
+    description String
+)
+ENGINE = TinyLog();
+
+INSERT INTO dict_vehicle_types VALUES
+('FENYUN',      '轒辒车',   'ancient', '掩护型攻城车, 顶部防护优秀, 用于推进至城下'),
+('CHONGCHE',    '冲车',     'ancient', '重型突击车, 含撞城槌和楼车两种子类'),
+('YUNTI',       '云梯',     'ancient', '登城型车辆, 防护较弱但机动性强'),
+('MODERN_APC',  '装甲运兵车', 'modern',  '人员输送型, 防护适中, 机动性强'),
+('MODERN_IFV',  '步兵战车',   'modern',  '火力支援型, 复合装甲, 可与步兵协同'),
+('MODERN_TANK', '主战坦克',   'modern',  '重型突击型, 装甲极强, 火力凶猛');
+
+CREATE TABLE IF NOT EXISTS dict_formation_types (
+    type_code   LowCardinality(String),
+    name_zh     String,
+    description String,
+    survival_weight Float64,
+    coverage_weight Float64,
+    progress_weight Float64
+)
+ENGINE = TinyLog();
+
+INSERT INTO dict_formation_types VALUES
+('LINE',     '横排',   '多车并列推进, 覆盖面广但速度最慢',    0.55, 1.00, 0.60),
+('WEDGE',    '楔形',   '尖刀阵型, 推进最快但前锋伤亡大',      0.65, 0.55, 1.00),
+('ECHELON',  '梯形',   '平衡型, 兼顾覆盖和推进效率',          0.75, 0.80, 0.80),
+('V_SHAPE',  'V形',    '保护中路, 两翼前出分散火力',          0.85, 0.70, 0.75),
+('COLUMN',   '纵队',   '纵深排列, 集中突破但覆盖面小',        0.70, 0.45, 0.85),
+('DIAMOND',  '菱形',   '全方位防护, 适合混战和多路防御',      0.90, 0.65, 0.65);
+
+-- ============================================================
 -- 完成信息
 -- ============================================================
-SELECT 'ClickHouse初始化脚本执行完成 - v1.2 (多级TTL + 降采样)' AS status;
+SELECT 'ClickHouse初始化脚本执行完成 - v1.3 (多级TTL + 降采样 + 车辆对比 + 队形优化 + 虚拟驾驶)' AS status;

@@ -117,31 +117,43 @@ public:
 
     bool load_from_file(const std::string& system_path,
                         const std::string& materials_path,
-                        const std::string& ahp_path);
+                        const std::string& ahp_path,
+                        const std::string& vehicles_path = "");
 
     bool load_from_string(const std::string& system_json,
                           const std::string& materials_json,
-                          const std::string& ahp_json);
+                          const std::string& ahp_json,
+                          const std::string& vehicles_json = "");
 
     const SystemConfig& system_config() const { return system_; }
     const AHPConfig& ahp_config() const { return ahp_; }
     const std::map<std::string, MaterialProperties>& materials() const { return materials_; }
     const std::map<std::string, JohnsonCookParams>& jc_params() const { return jc_params_; }
+    const std::map<std::string, VehicleProfile>& vehicles() const { return vehicles_; }
 
     MaterialProperties get_material(const std::string& name) const;
     JohnsonCookParams get_jc_params(const std::string& material_name) const;
+    VehicleProfile get_vehicle(const std::string& id) const;
+    std::vector<VehicleProfile> get_vehicles_by_era(VehicleEra era) const;
+    std::vector<VehicleProfile> get_vehicles_by_type(VehicleType type) const;
 
     bool has_material(const std::string& name) const;
+    bool has_vehicle(const std::string& id) const;
 
 private:
     bool parse_system_config(const json::Value& root);
     bool parse_materials_config(const json::Value& root);
     bool parse_ahp_config(const json::Value& root);
+    bool parse_vehicles_config(const json::Value& root);
+
+    VehicleEra era_from_string(const std::string& s) const;
+    VehicleType type_from_string(const std::string& s) const;
 
     SystemConfig system_;
     AHPConfig ahp_;
     std::map<std::string, MaterialProperties> materials_;
     std::map<std::string, JohnsonCookParams> jc_params_;
+    std::map<std::string, VehicleProfile> vehicles_;
     bool loaded_ = false;
 };
 

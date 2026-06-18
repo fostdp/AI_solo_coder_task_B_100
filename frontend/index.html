@@ -16,10 +16,25 @@ body {
 #app {
     display: grid;
     grid-template-columns: 320px 1fr 340px;
-    grid-template-rows: 60px 1fr 180px;
+    grid-template-rows: 60px 48px 1fr 180px;
     height: 100vh;
     gap: 1px;
     background: #1a2040;
+}
+#app.feature-mode {
+    grid-template-columns: 1fr;
+    grid-template-rows: 60px 48px 1fr;
+}
+#app.feature-mode #sidebar-left,
+#app.feature-mode #sidebar-right,
+#app.feature-mode #bottom-panel { display: none; }
+#app.feature-mode #viewport { display: none; }
+#app.feature-mode #feature-container { display: block; }
+#feature-container {
+    display: none;
+    overflow: auto;
+    padding: 20px;
+    background: radial-gradient(ellipse at center, #0d1525 0%, #050810 100%);
 }
 #header {
     grid-column: 1 / 4;
@@ -29,6 +44,7 @@ body {
     background: linear-gradient(90deg, #1a1a3a 0%, #2a1a4a 100%);
     border-bottom: 2px solid #4a5aaa;
 }
+#app.feature-mode #header { grid-column: 1 / 2; }
 #header h1 {
     font-size: 20px;
     font-weight: 600;
@@ -59,6 +75,39 @@ body {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
+#tab-bar {
+    grid-column: 1 / 4;
+    display: flex;
+    gap: 2px;
+    background: #0a0e1a;
+    padding: 0 12px;
+    border-bottom: 1px solid #2a3050;
+}
+#app.feature-mode #tab-bar { grid-column: 1 / 2; }
+.tab-btn {
+    padding: 0 18px;
+    background: #14182a;
+    color: #8899bb;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tab-btn:hover {
+    background: #1e2544;
+    color: #c0d0ff;
+}
+.tab-btn.active {
+    background: #1e2544;
+    color: #8af;
+    border-bottom: 2px solid #6af;
+}
+.tab-btn .tab-icon { font-size: 14px; }
 
 #sidebar-left, #sidebar-right {
     background: #14182a;
@@ -311,13 +360,33 @@ button + button { margin-top: 8px; }
 <div id="app">
     <div id="header">
         <h1>轒辒车 · 结构防护仿真系统</h1>
-        <span class="sub">FENYUN VEHICLE STRUCTURAL SIMULATION</span>
+        <span class="sub">FENYUN VEHICLE STRUCTURAL SIMULATION v1.3</span>
         <div class="status">
             <div class="status-item"><span class="status-dot"></span><span>后端服务</span></div>
-            <div class="status-item"><span class="status-dot" style="background:#fa4;box-shadow:0 0 10px #fa4"></span><span>MQTT: <span id="mqtt-status">连接中</span></span></div>
+            <div class="status-item"><span class="status-dot" style="background:#fa4;box-shadow:0 0 10px #fa4"></span><span>MQTT: <span id="mqtt-status">连接中</span></div>
             <div class="status-item"><span id="clock" style="font-family:monospace;color:#8af">--:--:--</span></div>
         </div>
     </div>
+
+    <div id="tab-bar">
+        <button class="tab-btn active" data-tab="simulation">
+            <span class="tab-icon">🛡️</span>单车辆防护仿真
+        </button>
+        <button class="tab-btn" data-tab="comparison">
+            <span class="tab-icon">⚖️</span>车辆防护对比
+        </button>
+        <button class="tab-btn" data-tab="cross-era">
+            <span class="tab-icon">⏳</span>跨时代防护对比
+        </button>
+        <button class="tab-btn" data-tab="formation">
+            <span class="tab-icon">🎯</span>多车队形优化
+        </button>
+        <button class="tab-btn" data-tab="driving">
+            <span class="tab-icon">🎮</span>虚拟驾驶体验
+        </button>
+    </div>
+
+    <div id="feature-container"></div>
 
     <div id="sidebar-left">
         <div class="panel-title">车辆选择</div>

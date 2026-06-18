@@ -111,6 +111,147 @@ struct ProtectionEvaluation {
     bool is_recommended;
 };
 
+enum class VehicleEra : uint8_t { ANCIENT = 0, MODERN = 1 };
+enum class VehicleType : uint8_t {
+    FENYUN = 0,
+    CHONGCHE = 1,
+    YUNTI = 2,
+    MODERN_APC = 3,
+    MODERN_TANK = 4,
+    MODERN_IFV = 5
+};
+
+struct VehicleProfile {
+    std::string id;
+    std::string display_name;
+    std::string description;
+    VehicleEra era;
+    VehicleType type;
+    double length_m;
+    double width_m;
+    double height_m;
+    double weight_ton;
+    int crew_count;
+    double max_speed_kmh;
+    double roof_thickness_mm;
+    double wall_thickness_mm;
+    std::string primary_material;
+    std::vector<std::string> available_materials;
+    double protection_area_m2;
+    int historical_year;
+    std::string origin;
+};
+
+struct VehicleComparisonRequest {
+    std::vector<std::string> vehicle_ids;
+    double rock_mass_kg;
+    double rock_velocity_ms;
+    double impact_location_x;
+    double impact_location_y;
+    double temperature_K;
+    bool use_johnson_cook = true;
+};
+
+struct VehicleComparisonItem {
+    std::string vehicle_id;
+    std::string display_name;
+    VehicleEra era;
+    SimulationResult simulation;
+    double protection_efficiency_score;
+    double weight_normalized_score;
+    double cost_normalized_score;
+    double overall_score;
+    int rank;
+};
+
+struct VehicleComparisonResult {
+    uint64_t comparison_id;
+    int64_t timestamp_ms;
+    VehicleComparisonRequest request;
+    std::vector<VehicleComparisonItem> items;
+    std::string best_vehicle_id;
+    std::vector<std::string> insights;
+};
+
+struct FormationVehicle {
+    uint32_t vehicle_id;
+    std::string vehicle_type;
+    double position_x;
+    double position_y;
+    double heading_deg;
+    double spacing_m;
+    bool is_lead;
+};
+
+struct FormationConfig {
+    std::string formation_type;
+    int vehicle_count;
+    double spacing_m;
+    double attack_width_m;
+    double wall_distance_m;
+    std::vector<std::string> vehicle_types;
+};
+
+struct FormationOptimizationRequest {
+    int vehicle_count;
+    double wall_height_m;
+    double wall_length_m;
+    double rock_fall_rate_per_sec;
+    double avg_rock_mass_kg;
+    FormationConfig baseline;
+};
+
+struct FormationOptimizationResult {
+    uint64_t optimization_id;
+    int64_t timestamp_ms;
+    FormationConfig best_formation;
+    double survival_probability;
+    double avg_coverage_score;
+    double total_progress_rate;
+    std::vector<FormationConfig> candidate_formations;
+    std::vector<std::string> recommendations;
+};
+
+struct UserSession {
+    std::string session_id;
+    int64_t created_ms;
+    int64_t last_active_ms;
+    std::string user_nickname;
+    uint32_t current_vehicle_id;
+    std::string vehicle_type;
+};
+
+struct UserVehicleState {
+    std::string session_id;
+    double position_x;
+    double position_y;
+    double heading_deg;
+    double speed_ms;
+    double health_percent;
+    double armor_integrity_percent;
+    int impacts_received;
+    double distance_traveled_m;
+    int64_t timestamp_ms;
+};
+
+struct UserActionRequest {
+    std::string session_id;
+    std::string action;
+    double param1;
+    double param2;
+};
+
+struct RockAttackEvent {
+    uint64_t event_id;
+    std::string session_id;
+    double impact_x;
+    double impact_y;
+    double rock_mass_kg;
+    double rock_velocity_ms;
+    double damage_dealt;
+    int64_t timestamp_ms;
+};
+
 using SensorCallback = std::function<void(const SensorData&)>;
 using SimulationCallback = std::function<void(const SimulationResult&)>;
 using AlertCallback = std::function<void(const AlertRecord&)>;

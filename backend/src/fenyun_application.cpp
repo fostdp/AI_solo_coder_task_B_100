@@ -15,16 +15,18 @@ bool FenyunApplication::load_config(const std::string& config_dir) {
     std::string sys_path = config_dir + "/system.json";
     std::string mat_path = config_dir + "/materials.json";
     std::string ahp_path = config_dir + "/ahp_weights.json";
+    std::string veh_path = config_dir + "/vehicles.json";
 
     config_ = std::make_shared<ConfigLoader>();
-    if (!config_->load_from_file(sys_path, mat_path, ahp_path)) {
+    if (!config_->load_from_file(sys_path, mat_path, ahp_path, veh_path)) {
         std::cerr << "[Application] Failed to load config from " << config_dir << std::endl;
         return false;
     }
 
     std::cout << "[Application] Config loaded: " << config_->materials().size()
               << " materials, " << config_->ahp_config().criteria.size()
-              << " AHP criteria" << std::endl;
+              << " AHP criteria, " << config_->vehicles().size()
+              << " vehicle profiles" << std::endl;
     return true;
 }
 
@@ -58,6 +60,10 @@ bool FenyunApplication::initialize() {
     protection_optimizer_->set_input_queue(optimizer_queue_);
     protection_optimizer_->set_output_queue(evaluation_queue_);
 
+    vehicle_comparator_ = std::make_shared<VehicleComparator>(config_, impact_simulator_);
+    formation_optimizer_ = std::make_shared<FormationOptimizer>(config_);
+    user_session_manager_ = std::make_shared<UserSessionManager>(config_, impact_simulator_);
+
     alarm_mqtt_ = std::make_shared<AlarmMqtt>(config_);
     alarm_mqtt_->set_input_queue(simulation_queue_);
     alarm_mqtt_->set_alert_callback([](const AlertRecord& a) {
@@ -66,7 +72,7 @@ bool FenyunApplication::initialize() {
 
     clickhouse_client_ = std::make_shared<ClickHouseClient>(config_);
 
-    std::cout << "[Application] Modules initialized" << std::endl;
+    std::cout << "[Application] Modules initialized (incl. vehicle_comparator, formation_optimizer, user_session)" << std::endl;
     return true;
 }
 
@@ -86,8 +92,9 @@ void FenyunApplication::start() {
 
     storage_writer_ = std::thread(&FenyunApplication::storage_writer_loop, this);
     eval_writer_ = std::thread(&FenyunApplication::evaluation_writer_loop, this);
+    session_cleanup_ = std::thread(&FenyunApplication::session_cleanup_loop, this);
 
-    std::cout << "[Application] All modules started" << std::endl;
+    std::cout << "[Application] All modules started (incl. vehicle_comparator, formation_optimizer, user_session)" << std::endl;
 }
 
 void FenyunApplication::stop() {
@@ -99,14 +106,26 @@ void FenyunApplication::stop() {
 
     if (storage_writer_.joinable()) storage_writer_.join();
     if (eval_writer_.joinable()) eval_writer_.join();
+    if (session_cleanup_.joinable()) session_cleanup_.join();
 
     if (clickhouse_client_) clickhouse_client_->disconnect();
 
+    uint64_t sessions = user_session_manager_ ? user_session_manager_->total_sessions_created() : 0;
     std::cout << "[Application] All modules stopped" << std::endl;
     std::cout << "[Application] Stats: sensors=" << sensors_stored_.load()
               << " sims=" << sims_stored_.load()
               << " alerts=" << alerts_stored_.load()
-              << " evals=" << evaluations_stored_.load() << std::endl;
+              << " evals=" << evaluations_stored_.load()
+              << " sessions=" << sessions << std::endl;
+}
+
+void FenyunApplication::session_cleanup_loop() {
+    while (running_.load()) {
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        if (user_session_manager_) {
+            user_session_manager_->cleanup_expired_sessions(300000);
+        }
+    }
 }
 
 void FenyunApplication::storage_writer_loop() {

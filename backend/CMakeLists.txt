@@ -97,8 +97,11 @@ set(BACKEND_SOURCES
     src/dtu_receiver/dtu_receiver.cpp
     src/impact_simulator/impact_simulator.cpp
     src/protection_optimizer/protection_optimizer.cpp
+    src/formation_optimizer/formation_optimizer.cpp
     src/alarm_mqtt/alarm_mqtt.cpp
     src/storage/clickhouse_client.cpp
+    src/user_session/user_session_manager.cpp
+    src/vehicle_comparator/vehicle_comparator.cpp
 )
 
 set(BACKEND_HEADERS
@@ -116,8 +119,11 @@ set(BACKEND_HEADERS
     include/dtu_receiver/dtu_receiver.h
     include/impact_simulator/impact_simulator.h
     include/protection_optimizer/protection_optimizer.h
+    include/formation_optimizer/formation_optimizer.h
     include/alarm_mqtt/alarm_mqtt.h
     include/storage/clickhouse_client.h
+    include/user_session/user_session_manager.h
+    include/vehicle_comparator/vehicle_comparator.h
 )
 
 find_package(Threads REQUIRED)

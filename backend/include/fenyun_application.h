@@ -6,6 +6,9 @@
 #include "dtu_receiver/dtu_receiver.h"
 #include "impact_simulator/impact_simulator.h"
 #include "protection_optimizer/protection_optimizer.h"
+#include "vehicle_comparator/vehicle_comparator.h"
+#include "formation_optimizer/formation_optimizer.h"
+#include "user_session/user_session_manager.h"
 #include "alarm_mqtt/alarm_mqtt.h"
 #include "storage/clickhouse_client.h"
 
@@ -34,6 +37,9 @@ public:
     std::shared_ptr<DtuReceiver> dtu_receiver() { return dtu_receiver_; }
     std::shared_ptr<ImpactSimulator> impact_simulator() { return impact_simulator_; }
     std::shared_ptr<ProtectionOptimizer> protection_optimizer() { return protection_optimizer_; }
+    std::shared_ptr<VehicleComparator> vehicle_comparator() { return vehicle_comparator_; }
+    std::shared_ptr<FormationOptimizer> formation_optimizer() { return formation_optimizer_; }
+    std::shared_ptr<UserSessionManager> user_session_manager() { return user_session_manager_; }
     std::shared_ptr<AlarmMqtt> alarm_mqtt() { return alarm_mqtt_; }
     std::shared_ptr<ClickHouseClient> clickhouse_client() { return clickhouse_client_; }
 
@@ -52,11 +58,15 @@ private:
 
     void storage_writer_loop();
     void evaluation_writer_loop();
+    void session_cleanup_loop();
 
     std::shared_ptr<ConfigLoader> config_;
     std::shared_ptr<DtuReceiver> dtu_receiver_;
     std::shared_ptr<ImpactSimulator> impact_simulator_;
     std::shared_ptr<ProtectionOptimizer> protection_optimizer_;
+    std::shared_ptr<VehicleComparator> vehicle_comparator_;
+    std::shared_ptr<FormationOptimizer> formation_optimizer_;
+    std::shared_ptr<UserSessionManager> user_session_manager_;
     std::shared_ptr<AlarmMqtt> alarm_mqtt_;
     std::shared_ptr<ClickHouseClient> clickhouse_client_;
 
@@ -68,6 +78,7 @@ private:
     std::atomic<bool> running_ {false};
     std::thread storage_writer_;
     std::thread eval_writer_;
+    std::thread session_cleanup_;
 
     std::atomic<uint64_t> sims_stored_ {0};
     std::atomic<uint64_t> alerts_stored_ {0};

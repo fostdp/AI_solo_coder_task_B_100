@@ -21,12 +21,17 @@ std::string read_file_content(const std::string& path) {
 
 bool ConfigLoader::load_from_file(const std::string& system_path,
                                    const std::string& materials_path,
-                                   const std::string& ahp_path) {
+                                   const std::string& ahp_path,
+                                   const std::string& vehicles_path) {
     try {
         std::string sys_str = read_file_content(system_path);
         std::string mat_str = read_file_content(materials_path);
         std::string ahp_str = read_file_content(ahp_path);
-        return load_from_string(sys_str, mat_str, ahp_str);
+        std::string veh_str;
+        if (!vehicles_path.empty()) {
+            veh_str = read_file_content(vehicles_path);
+        }
+        return load_from_string(sys_str, mat_str, ahp_str, veh_str);
     } catch (const std::exception& e) {
         std::cerr << "[Config] Load error: " << e.what() << std::endl;
         return false;
@@ -35,7 +40,8 @@ bool ConfigLoader::load_from_file(const std::string& system_path,
 
 bool ConfigLoader::load_from_string(const std::string& system_json,
                                      const std::string& materials_json,
-                                     const std::string& ahp_json) {
+                                     const std::string& ahp_json,
+                                     const std::string& vehicles_json) {
     try {
         json::Value sys_root = json::parse(system_json);
         json::Value mat_root = json::parse(materials_json);
@@ -50,6 +56,17 @@ bool ConfigLoader::load_from_string(const std::string& system_json,
         ok &= parse_system_config(sys_root);
         ok &= parse_materials_config(mat_root);
         ok &= parse_ahp_config(ahp_root);
+
+        if (!vehicles_json.empty()) {
+            json::Value veh_root = json::parse(vehicles_json);
+            if (veh_root.isNull()) {
+                std::cerr << "[Config] Vehicles JSON parse failed" << std::endl;
+                ok = false;
+            } else {
+                ok &= parse_vehicles_config(veh_root);
+            }
+        }
+
         loaded_ = ok;
         return ok;
     } catch (const std::exception& e) {
@@ -232,6 +249,92 @@ JohnsonCookParams ConfigLoader::get_jc_params(const std::string& material_name) 
 
 bool ConfigLoader::has_material(const std::string& name) const {
     return materials_.find(name) != materials_.end();
+}
+
+VehicleEra ConfigLoader::era_from_string(const std::string& s) const {
+    if (s == "ancient") return VehicleEra::ANCIENT;
+    if (s == "modern") return VehicleEra::MODERN;
+    return VehicleEra::ANCIENT;
+}
+
+VehicleType ConfigLoader::type_from_string(const std::string& s) const {
+    if (s == "FENYUN") return VehicleType::FENYUN;
+    if (s == "CHONGCHE") return VehicleType::CHONGCHE;
+    if (s == "YUNTI") return VehicleType::YUNTI;
+    if (s == "MODERN_APC") return VehicleType::MODERN_APC;
+    if (s == "MODERN_TANK") return VehicleType::MODERN_TANK;
+    if (s == "MODERN_IFV") return VehicleType::MODERN_IFV;
+    return VehicleType::FENYUN;
+}
+
+bool ConfigLoader::parse_vehicles_config(const json::Value& root) {
+    vehicles_.clear();
+
+    const json::Value& vehs = root["vehicles"];
+    if (!vehs.isObject()) return false;
+
+    for (const auto& [id, veh_val] : vehs.asObject()) {
+        VehicleProfile vp;
+        vp.id = id;
+        vp.display_name = veh_val["display_name"].asString();
+        vp.description = veh_val["description"].asString();
+        vp.era = era_from_string(veh_val["era"].asString());
+        vp.type = type_from_string(veh_val["type"].asString());
+        vp.length_m = veh_val["length_m"].asDouble();
+        vp.width_m = veh_val["width_m"].asDouble();
+        vp.height_m = veh_val["height_m"].asDouble();
+        vp.weight_ton = veh_val["weight_ton"].asDouble();
+        vp.crew_count = veh_val["crew_count"].asInt();
+        vp.max_speed_kmh = veh_val["max_speed_kmh"].asDouble();
+        vp.roof_thickness_mm = veh_val["roof_thickness_mm"].asDouble();
+        vp.wall_thickness_mm = veh_val["wall_thickness_mm"].asDouble();
+        vp.primary_material = veh_val["primary_material"].asString();
+
+        const json::Value& am = veh_val["available_materials"];
+        vp.available_materials.clear();
+        for (size_t i = 0; i < am.size(); ++i) {
+            vp.available_materials.push_back(am[i].asString());
+        }
+
+        vp.protection_area_m2 = veh_val["protection_area_m2"].asDouble();
+        vp.historical_year = veh_val["historical_year"].asInt();
+        vp.origin = veh_val["origin"].asString();
+
+        vehicles_[id] = std::move(vp);
+    }
+
+    return !vehicles_.empty();
+}
+
+VehicleProfile ConfigLoader::get_vehicle(const std::string& id) const {
+    auto it = vehicles_.find(id);
+    if (it != vehicles_.end()) return it->second;
+    if (!vehicles_.empty()) return vehicles_.begin()->second;
+    return VehicleProfile{};
+}
+
+std::vector<VehicleProfile> ConfigLoader::get_vehicles_by_era(VehicleEra era) const {
+    std::vector<VehicleProfile> result;
+    for (const auto& [id, vp] : vehicles_) {
+        if (vp.era == era) {
+            result.push_back(vp);
+        }
+    }
+    return result;
+}
+
+std::vector<VehicleProfile> ConfigLoader::get_vehicles_by_type(VehicleType type) const {
+    std::vector<VehicleProfile> result;
+    for (const auto& [id, vp] : vehicles_) {
+        if (vp.type == type) {
+            result.push_back(vp);
+        }
+    }
+    return result;
+}
+
+bool ConfigLoader::has_vehicle(const std::string& id) const {
+    return vehicles_.find(id) != vehicles_.end();
 }
 
 std::shared_ptr<ConfigLoader> create_default_config_loader() {
