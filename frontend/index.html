@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>古代轒辒车结构防护仿真与滚石冲击分析系统</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #0a0e1a;
+    color: #e0e8ff;
+    overflow: hidden;
+    height: 100vh;
+}
+#app {
+    display: grid;
+    grid-template-columns: 320px 1fr 340px;
+    grid-template-rows: 60px 1fr 180px;
+    height: 100vh;
+    gap: 1px;
+    background: #1a2040;
+}
+#header {
+    grid-column: 1 / 4;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    background: linear-gradient(90deg, #1a1a3a 0%, #2a1a4a 100%);
+    border-bottom: 2px solid #4a5aaa;
+}
+#header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    background: linear-gradient(90deg, #6af, #a6f);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+}
+#header .sub {
+    margin-left: 16px;
+    font-size: 12px;
+    color: #8899cc;
+    letter-spacing: 1px;
+}
+#header .status {
+    margin-left: auto;
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+}
+.status-item { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #4a4; box-shadow: 0 0 10px #4a4;
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+#sidebar-left, #sidebar-right {
+    background: #14182a;
+    padding: 16px;
+    overflow-y: auto;
+}
+#sidebar-left::-webkit-scrollbar,
+#sidebar-right::-webkit-scrollbar,
+#bottom-panel::-webkit-scrollbar { width: 6px; }
+#sidebar-left::-webkit-scrollbar-thumb,
+#sidebar-right::-webkit-scrollbar-thumb,
+#bottom-panel::-webkit-scrollbar-thumb {
+    background: #3a4060; border-radius: 3px;
+}
+
+.panel-title {
+    font-size: 13px;
+    color: #8af;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2a3050;
+    text-transform: uppercase;
+}
+.section { margin-bottom: 20px; }
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed #222a44;
+}
+.metric-label { font-size: 12px; color: #8899bb; }
+.metric-value {
+    font-size: 16px;
+    font-weight: 600;
+    font-family: "Courier New", monospace;
+    color: #fff;
+}
+.metric-unit { font-size: 11px; color: #667; margin-left: 4px; }
+
+.select-wrap {
+    margin-bottom: 16px;
+}
+.select-wrap label {
+    display: block;
+    font-size: 12px;
+    color: #8899bb;
+    margin-bottom: 6px;
+}
+select, button {
+    width: 100%;
+    padding: 8px 12px;
+    background: #1e2544;
+    border: 1px solid #3a4070;
+    color: #e0e8ff;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+}
+button {
+    background: linear-gradient(90deg, #3a4a8a, #5a3a8a);
+    border: none;
+    font-weight: 600;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+}
+button:hover {
+    background: linear-gradient(90deg, #4a5aaa, #6a4aaa);
+    box-shadow: 0 0 20px rgba(100, 80, 200, 0.4);
+}
+button + button { margin-top: 8px; }
+
+#viewport {
+    position: relative;
+    background: radial-gradient(ellipse at center, #0d1525 0%, #050810 100%);
+}
+#canvas-container {
+    position: absolute;
+    inset: 0;
+}
+#viewport-hud {
+    position: absolute;
+    top: 16px; left: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+}
+.hud-card {
+    background: rgba(20, 25, 50, 0.85);
+    border: 1px solid #3a4070;
+    border-radius: 6px;
+    padding: 10px 14px;
+    backdrop-filter: blur(6px);
+}
+.hud-title {
+    font-size: 10px;
+    color: #668;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+}
+.hud-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: "Courier New", monospace;
+}
+.hud-danger { color: #f55; text-shadow: 0 0 10px #f44; }
+.hud-warn { color: #fa4; text-shadow: 0 0 10px #fa4; }
+.hud-safe { color: #4af; }
+#viewport-controls {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+#viewport-controls button {
+    width: auto;
+    padding: 6px 14px;
+    font-size: 12px;
+    letter-spacing: 0;
+}
+.toggle-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 13px;
+}
+.toggle {
+    position: relative;
+    width: 40px; height: 22px;
+    background: #2a3050;
+    border-radius: 11px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.toggle.active { background: #4a6aaa; }
+.toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.toggle.active::after { transform: translateX(18px); }
+
+#color-legend {
+    position: absolute;
+    right: 16px; top: 16px;
+    width: 30px;
+    height: 200px;
+    z-index: 10;
+    border: 1px solid #3a4070;
+    border-radius: 4px;
+    overflow: hidden;
+    background: linear-gradient(to top,
+        #00f 0%, #0ff 25%, #0f0 50%, #ff0 75%, #f00 100%
+    );
+}
+#color-legend-labels {
+    position: absolute;
+    right: 52px; top: 16px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #889;
+    font-family: monospace;
+    z-index: 10;
+}
+
+#bottom-panel {
+    grid-column: 1 / 4;
+    background: #14182a;
+    padding: 12px 20px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    overflow-x: auto;
+    border-top: 2px solid #2a3050;
+}
+.chart-card {
+    background: #1a2040;
+    border: 1px solid #2a3050;
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: flex;
+    flex-direction: column;
+}
+.chart-title {
+    font-size: 12px;
+    color: #8af;
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+}
+.chart-canvas-wrap {
+    flex: 1;
+    position: relative;
+    min-height: 100px;
+}
+.ahp-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ahp-table th, .ahp-table td {
+    padding: 4px 6px;
+    text-align: right;
+    border-bottom: 1px solid #2a3050;
+}
+.ahp-table th {
+    color: #8af;
+    text-align: center;
+    font-weight: 500;
+    background: #1e2544;
+}
+.ahp-table th:first-child, .ahp-table td:first-child {
+    text-align: left;
+}
+.ahp-table tr.recommended td { color: #4f8; font-weight: 600; }
+.badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+}
+.badge-rec { background: #264; color: #8fa; }
+.badge-2 { background: #463a20; color: #fc8; }
+.badge-3 { background: #432a20; color: #faa; }
+.badge-4 { background: #422a3a; color: #fac; }
+.alert-list { max-height: 120px; overflow-y: auto; }
+.alert-item {
+    padding: 6px 8px;
+    border-left: 3px solid #a44;
+    background: rgba(200, 50, 50, 0.1);
+    margin-bottom: 4px;
+    font-size: 11px;
+    border-radius: 2px;
+}
+.alert-item.warn { border-left-color: #aa4; background: rgba(200, 180, 50, 0.1); }
+.alert-item.info { border-left-color: #48a; background: rgba(50, 100, 200, 0.1); }
+.alert-time { color: #668; font-size: 10px; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+    <div id="header">
+        <h1>轒辒车 · 结构防护仿真系统</h1>
+        <span class="sub">FENYUN VEHICLE STRUCTURAL SIMULATION</span>
+        <div class="status">
+            <div class="status-item"><span class="status-dot"></span><span>后端服务</span></div>
+            <div class="status-item"><span class="status-dot" style="background:#fa4;box-shadow:0 0 10px #fa4"></span><span>MQTT: <span id="mqtt-status">连接中</span></span></div>
+            <div class="status-item"><span id="clock" style="font-family:monospace;color:#8af">--:--:--</span></div>
+        </div>
+    </div>
+
+    <div id="sidebar-left">
+        <div class="panel-title">车辆选择</div>
+        <div class="section">
+            <div class="select-wrap">
+                <label>当前车辆</label>
+                <select id="vehicle-select">
+                    <option value="1">先锋一号 (木质+牛皮)</option>
+                    <option value="2">雷霆二号 (木质+铁皮)</option>
+                    <option value="3">攻坚三号 (复合结构)</option>
+                </select>
+            </div>
+            <div class="select-wrap">
+                <label>防护材料</label>
+                <select id="material-select">
+                    <option value="wood">木材 (wood)</option>
+                    <option value="cowhide">牛皮 (cowhide)</option>
+                    <option value="iron">铁皮 (iron)</option>
+                    <option value="composite">复合材料 (composite)</option>
+                </select>
+            </div>
+            <button id="btn-simulate">▶ 运行冲击仿真</button>
+            <button id="btn-evaluate">⚖ AHP防护优化评估</button>
+            <button id="btn-reset">↻ 重置视图</button>
+        </div>
+
+        <div class="panel-title">显示设置</div>
+        <div class="section">
+            <div class="toggle-wrap"><span>显示滚石粒子</span><div class="toggle active" id="toggle-rocks"></div></div>
+            <div class="toggle-wrap"><span>显示变形云图</span><div class="toggle active" id="toggle-cloud"></div></div>
+            <div class="toggle-wrap"><span>显示应力云图</span><div class="toggle" id="toggle-stress"></div></div>
+            <div class="toggle-wrap"><span>显示网格</span><div class="toggle" id="toggle-wireframe"></div></div>
+            <div class="toggle-wrap"><span>自动旋转</span><div class="toggle" id="toggle-rotate"></div></div>
+        </div>
+    </div>
+
+    <div id="viewport">
+        <div id="canvas-container"></div>
+        <div id="viewport-hud">
+            <div class="hud-card">
+                <div class="hud-title">顶棚最大变形</div>
+                <div class="hud-value hud-safe" id="hud-deformation">0.00<span style="font-size:12px">mm</span></div>
+            </div>
+            <div class="hud-card">
+                <div class="hud-title">Von Mises 应力</div>
+                <div class="hud-value hud-safe" id="hud-stress">0.00<span style="font-size:12px">MPa</span></div>
+            </div>
+            <div class="hud-card">
+                <div class="hud-title">冲击能量</div>
+                <div class="hud-value" id="hud-energy">0.00<span style="font-size:12px">J</span></div>
+            </div>
+            <div class="hud-card">
+                <div class="hud-title">损伤等级</div>
+                <div class="hud-value hud-safe" id="hud-damage">0 完好</div>
+            </div>
+        </div>
+        <div id="color-legend"></div>
+        <div id="color-legend-labels">
+            <span>最大</span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span>最小</span>
+        </div>
+        <div id="viewport-controls">
+            <button id="view-front">正视</button>
+            <button id="view-side">侧视</button>
+            <button id="view-top">俯视</button>
+            <button id="view-iso">等轴</button>
+        </div>
+    </div>
+
+    <div id="sidebar-right">
+        <div class="panel-title">实时传感器数据</div>
+        <div class="section">
+            <div class="metric-row">
+                <span class="metric-label">顶棚应力</span>
+                <span><span class="metric-value" id="m-roof-stress">0.0</span><span class="metric-unit">MPa</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">车轮变形</span>
+                <span><span class="metric-value" id="m-wheel-def">0.0</span><span class="metric-unit">mm</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">滚石冲击力</span>
+                <span><span class="metric-value" id="m-impact">0.0</span><span class="metric-unit">kN</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">防护层厚度</span>
+                <span><span class="metric-value" id="m-thickness">80.0</span><span class="metric-unit">mm</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">滚石质量</span>
+                <span><span class="metric-value" id="m-mass">50.0</span><span class="metric-unit">kg</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">滚石速度</span>
+                <span><span class="metric-value" id="m-velocity">15.0</span><span class="metric-unit">m/s</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">环境温度</span>
+                <span><span class="metric-value" id="m-temp">20.0</span><span class="metric-unit">℃</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">侵彻深度</span>
+                <span><span class="metric-value" id="m-penetration">0.0</span><span class="metric-unit">mm</span></span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">破坏模式</span>
+                <span><span class="metric-value" id="m-failure" style="font-size:12px;color:#8af">--</span></span>
+            </div>
+        </div>
+
+        <div class="panel-title">告警记录</div>
+        <div class="section">
+            <div class="alert-list" id="alert-list">
+                <div class="alert-item info">
+                    <div class="alert-time">系统启动</div>
+                    <div>等待仿真数据...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="bottom-panel">
+        <div class="chart-card">
+            <div class="chart-title">顶棚应力趋势 (MPa)</div>
+            <div class="chart-canvas-wrap"><canvas id="chart-stress"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">冲击力趋势 (kN)</div>
+            <div class="chart-canvas-wrap"><canvas id="chart-impact"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">AHP防护方案评估</div>
+            <div class="chart-canvas-wrap" id="ahp-container">
+                <table class="ahp-table" id="ahp-table">
+                    <thead>
+                        <tr><th>材料</th><th>厚度</th><th>吸能</th><th>强度</th><th>重量</th><th>成本</th><th>耐久</th><th>综合</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">顶棚变形场热力图</div>
+            <div class="chart-canvas-wrap"><canvas id="chart-heatmap"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
