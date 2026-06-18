@@ -300,6 +300,39 @@ bool ConfigLoader::parse_vehicles_config(const json::Value& root) {
         vp.historical_year = veh_val["historical_year"].asInt();
         vp.origin = veh_val["origin"].asString();
 
+        if (veh_val.has("literature_source") && !veh_val["literature_source"].isNull()) {
+            vp.literature_source = veh_val["literature_source"].asString();
+        }
+        if (veh_val.has("unit_conversion_note") && !veh_val["unit_conversion_note"].isNull()) {
+            vp.unit_conversion_note = veh_val["unit_conversion_note"].asString();
+        }
+        if (veh_val.has("stanag_equivalent_level") && !veh_val["stanag_equivalent_level"].isNull()) {
+            vp.stanag_equivalent_level = veh_val["stanag_equivalent_level"].asInt();
+        }
+        if (veh_val.has("rha_equivalent_mm") && !veh_val["rha_equivalent_mm"].isNull()) {
+            vp.rha_equivalent_mm = veh_val["rha_equivalent_mm"].asDouble();
+        }
+        if (veh_val.has("ground_pressure_kpa") && !veh_val["ground_pressure_kpa"].isNull()) {
+            vp.ground_pressure_kpa = veh_val["ground_pressure_kpa"].asDouble();
+        } else {
+            double contact_area = vp.length_m * vp.width_m * 0.75;
+            if (contact_area > 1e-6) {
+                vp.ground_pressure_kpa = (vp.weight_ton * 1000.0 * 9.8 / contact_area) / 1000.0;
+            } else {
+                vp.ground_pressure_kpa = (vp.era == VehicleEra::ANCIENT) ? 100.0 : 350.0;
+            }
+        }
+        if (veh_val.has("climb_grade_deg") && !veh_val["climb_grade_deg"].isNull()) {
+            vp.climb_grade_deg = veh_val["climb_grade_deg"].asDouble();
+        } else {
+            vp.climb_grade_deg = (vp.era == VehicleEra::ANCIENT) ? 12.5 : 45.0;
+        }
+        if (veh_val.has("trench_crossing_m") && !veh_val["trench_crossing_m"].isNull()) {
+            vp.trench_crossing_m = veh_val["trench_crossing_m"].asDouble();
+        } else {
+            vp.trench_crossing_m = (vp.era == VehicleEra::ANCIENT) ? (vp.width_m * 0.7) : (vp.length_m * 0.5);
+        }
+
         vehicles_[id] = std::move(vp);
     }
 

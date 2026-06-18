@@ -7,6 +7,7 @@ set(TEST_SOURCES
     user_session_manager_test.cpp
     config_loader_test.cpp
     integration_test.cpp
+    defect_fix_verification_test.cpp
 )
 
 add_executable(fenyun_tests ${TEST_SOURCES})

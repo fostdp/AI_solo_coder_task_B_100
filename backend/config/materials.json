@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "description": "轒辒车防护材料数据库 - 含弹塑性与Johnson-Cook高应变率参数",
+  "version": "1.3.0",
+  "description": "古代材料 + 现代装甲材料库 - 统一STANAG 4569标准编号",
   "materials": {
     "cowhide": {
       "display_name": "牛皮",
@@ -110,7 +110,12 @@
         "T_melt_K": 925.0,
         "T_ref_K": 298.15,
         "eps_dot_0": 1.0
-      }
+      },
+      "stanag_4569_level": 3,
+      "protection_level_desc": "Level 3: 5083铝合金38mm，全向防御7.62x51mm穿甲弹(AP)，距离30m",
+      "rha_equivalent_mm_frontal": 14,
+      "threat_defense_mm": "7.62/12.7",
+      "material_standard_source": "STANAG 4569 Edition 2 - Levels of Protection for Designated Areas of Light Armoured Vehicles, Medium Armoured Vehicles and Heavy Armoured Vehicles, NATO Standard, 2017"
     },
     "modern_steel": {
       "display_name": "RHA均质钢装甲",
@@ -132,7 +137,12 @@
         "T_melt_K": 1800.0,
         "T_ref_K": 298.15,
         "eps_dot_0": 1.0
-      }
+      },
+      "stanag_4569_level": 4,
+      "protection_level_desc": "Level 4: RHA均质钢装甲，全向防御14.5x114mm B32穿甲燃烧弹，距离200m",
+      "rha_equivalent_mm_frontal": 80,
+      "threat_defense_mm": "7.62/12.7/14.5/20",
+      "material_standard_source": "STANAG 4569 Edition 2 - Levels of Protection for Designated Areas of Light Armoured Vehicles, Medium Armoured Vehicles and Heavy Armoured Vehicles, NATO Standard, 2017"
     },
     "modern_composite": {
       "display_name": "陶瓷-金属复合装甲",
@@ -154,7 +164,12 @@
         "T_melt_K": 2800.0,
         "T_ref_K": 298.15,
         "eps_dot_0": 1.0
-      }
+      },
+      "stanag_4569_level": 5,
+      "protection_level_desc": "Level 5: 陶瓷-金属复合装甲，正面防御25x137mm M791 APDS-T脱壳穿甲弹，距离500m",
+      "rha_equivalent_mm_frontal": 350,
+      "threat_defense_mm": "7.62/12.7/14.5/20/25/30",
+      "material_standard_source": "STANAG 4569 Edition 2 - Levels of Protection for Designated Areas of Light Armoured Vehicles, Medium Armoured Vehicles and Heavy Armoured Vehicles, NATO Standard, 2017"
     },
     "modern_du": {
       "display_name": "贫铀复合装甲",
@@ -176,7 +191,12 @@
         "T_melt_K": 1405.0,
         "T_ref_K": 298.15,
         "eps_dot_0": 1.0
-      }
+      },
+      "stanag_4569_level": 6,
+      "protection_level_desc": "Level 6: 贫铀复合装甲，正面防御30x173mm APFSDS-T尾翼稳定脱壳穿甲弹，距离1000m",
+      "rha_equivalent_mm_frontal": 810,
+      "threat_defense_mm": "12.7/14.5/20/25/30/120/125",
+      "material_standard_source": "STANAG 4569 Edition 2 - Levels of Protection for Designated Areas of Light Armoured Vehicles, Medium Armoured Vehicles and Heavy Armoured Vehicles, NATO Standard, 2017"
     },
     "modern_era": {
       "display_name": "爆炸反应装甲(ERA)",
@@ -198,7 +218,12 @@
         "T_melt_K": 1500.0,
         "T_ref_K": 298.15,
         "eps_dot_0": 1.0
-      }
+      },
+      "stanag_4569_level": 6,
+      "protection_level_desc": "Level 6: 爆炸反应装甲(ERA)，化学能弹(HEAT/RPG)防护等效500mm+ RHA",
+      "rha_equivalent_mm_frontal": 500,
+      "threat_defense_mm": "化学能弹: RPG-7/AT-3/AT-4",
+      "material_standard_source": "STANAG 4569 Edition 2 - Levels of Protection for Designated Areas of Light Armoured Vehicles, Medium Armoured Vehicles and Heavy Armoured Vehicles, NATO Standard, 2017"
     }
   }
 }

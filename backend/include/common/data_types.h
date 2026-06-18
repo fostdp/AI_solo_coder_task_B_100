@@ -140,6 +140,13 @@ struct VehicleProfile {
     double protection_area_m2;
     int historical_year;
     std::string origin;
+    std::string literature_source;
+    std::string unit_conversion_note;
+    int stanag_equivalent_level;
+    double rha_equivalent_mm;
+    double ground_pressure_kpa;
+    double climb_grade_deg;
+    double trench_crossing_m;
 };
 
 struct VehicleComparisonRequest {
@@ -173,6 +180,25 @@ struct VehicleComparisonResult {
     std::vector<std::string> insights;
 };
 
+enum class TerrainType : uint8_t {
+    FLAT = 0,
+    GENTLE_SLOPE = 1,
+    STEEP_SLOPE = 2,
+    MUDDY = 3,
+    ROCKY = 4,
+    TRENCH_FIELD = 5
+};
+
+struct TerrainConstraint {
+    TerrainType terrain_type;
+    double slope_deg;
+    double mud_depth_cm;
+    double trench_count_per_100m;
+    double trench_width_m;
+    double obstacle_density;
+    double ground_condition_score;
+};
+
 struct FormationVehicle {
     uint32_t vehicle_id;
     std::string vehicle_type;
@@ -181,6 +207,8 @@ struct FormationVehicle {
     double heading_deg;
     double spacing_m;
     bool is_lead;
+    bool is_terrain_feasible;
+    double terrain_penalty;
 };
 
 struct FormationConfig {
@@ -190,6 +218,7 @@ struct FormationConfig {
     double attack_width_m;
     double wall_distance_m;
     std::vector<std::string> vehicle_types;
+    TerrainConstraint terrain;
 };
 
 struct FormationOptimizationRequest {
@@ -199,6 +228,7 @@ struct FormationOptimizationRequest {
     double rock_fall_rate_per_sec;
     double avg_rock_mass_kg;
     FormationConfig baseline;
+    TerrainConstraint terrain;
 };
 
 struct FormationOptimizationResult {
@@ -210,6 +240,31 @@ struct FormationOptimizationResult {
     double total_progress_rate;
     std::vector<FormationConfig> candidate_formations;
     std::vector<std::string> recommendations;
+};
+
+enum class ShockMagnitude : uint8_t {
+    IMPERCEPTIBLE = 0,
+    MINOR = 1,
+    MODERATE = 2,
+    STRONG = 3,
+    SEVERE = 4,
+    DESTRUCTIVE = 5
+};
+
+struct ShockVibration {
+    ShockMagnitude magnitude_level;
+    double amplitude_mm;
+    double pitch_deg;
+    double roll_deg;
+    double yaw_deg;
+    double frequency_hz;
+    double duration_ms;
+    double decay_rate_1_s;
+    double force_feedback_n;
+    double seat_acceleration_g;
+    double visual_screen_shake_px;
+    double audio_impact_intensity;
+    int64_t start_timestamp_ms;
 };
 
 struct UserSession {
@@ -232,6 +287,12 @@ struct UserVehicleState {
     int impacts_received;
     double distance_traveled_m;
     int64_t timestamp_ms;
+    ShockVibration current_vibration;
+    double roll_deg;
+    double pitch_deg;
+    double vertical_bounce_mm;
+    double steering_force_feedback_nm;
+    double throttle_force_feedback_n;
 };
 
 struct UserActionRequest {
@@ -250,6 +311,7 @@ struct RockAttackEvent {
     double rock_velocity_ms;
     double damage_dealt;
     int64_t timestamp_ms;
+    ShockVibration shock_effect;
 };
 
 using SensorCallback = std::function<void(const SensorData&)>;

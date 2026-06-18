@@ -63,6 +63,13 @@ private:
 
     void move_vehicle(UserVehicleState& state, double throttle, double steering, double dt);
 
+    ShockVibration compute_shock_vibration(uint8_t damage_level,
+                                           double rock_mass_kg,
+                                           double rock_velocity_ms,
+                                           double impact_location_x,
+                                           double vehicle_width_m,
+                                           int64_t now_ms);
+
     std::shared_ptr<ConfigLoader> config_;
     std::shared_ptr<ImpactSimulator> simulator_;
 

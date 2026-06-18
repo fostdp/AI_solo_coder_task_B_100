@@ -420,13 +420,152 @@ double FormationOptimizer::calc_progress_rate(const FormationConfig& config) con
     return std::min(1.0, std::max(0.0, progress));
 }
 
+double FormationOptimizer::terrain_speed_penalty(const TerrainConstraint& t) const {
+    switch (t.terrain_type) {
+        case TerrainType::FLAT:          return 1.0;
+        case TerrainType::GENTLE_SLOPE:  return 0.85;
+        case TerrainType::STEEP_SLOPE:   return 0.55;
+        case TerrainType::MUDDY:         return 0.45;
+        case TerrainType::ROCKY:         return 0.65;
+        case TerrainType::TRENCH_FIELD:  return 0.5;
+        default:                         return 1.0;
+    }
+}
+
+double FormationOptimizer::terrain_survival_penalty(const TerrainConstraint& t) const {
+    switch (t.terrain_type) {
+        case TerrainType::FLAT:          return 1.0;
+        case TerrainType::GENTLE_SLOPE:  return 0.95;
+        case TerrainType::STEEP_SLOPE:   return 0.75;
+        case TerrainType::MUDDY:         return 0.60;
+        case TerrainType::ROCKY:         return 0.80;
+        case TerrainType::TRENCH_FIELD:  return 0.70;
+        default:                         return 1.0;
+    }
+}
+
+double FormationOptimizer::terrain_coverage_penalty(const TerrainConstraint& t, double formation_width) const {
+    double base_penalty = 1.0;
+    switch (t.terrain_type) {
+        case TerrainType::FLAT:
+            base_penalty = 1.0;
+            break;
+        case TerrainType::GENTLE_SLOPE:
+            base_penalty = 0.90;
+            break;
+        case TerrainType::STEEP_SLOPE: {
+            double width_factor = std::max(0.3, 1.0 - (formation_width - 3.0) * 0.05);
+            base_penalty = 0.50 * width_factor;
+            break;
+        }
+        case TerrainType::MUDDY:
+            base_penalty = 0.70;
+            break;
+        case TerrainType::ROCKY:
+            base_penalty = 0.75;
+            break;
+        case TerrainType::TRENCH_FIELD: {
+            double width_factor = std::max(0.25, 1.0 - (formation_width - 3.0) * 0.07);
+            base_penalty = 0.40 * width_factor;
+            break;
+        }
+        default:
+            base_penalty = 1.0;
+            break;
+    }
+    return std::min(1.0, std::max(0.1, base_penalty));
+}
+
+double FormationOptimizer::calculate_terrain_feasibility(const FormationConfig& cfg,
+                                                         const TerrainConstraint& t,
+                                                         int vehicle_index) const {
+    FormationType type = formation_type_from_string(cfg.formation_type);
+    double feasibility = 1.0;
+
+    switch (t.terrain_type) {
+        case TerrainType::FLAT:
+            feasibility = 1.0;
+            break;
+        case TerrainType::GENTLE_SLOPE:
+            feasibility = 0.90;
+            break;
+        case TerrainType::STEEP_SLOPE: {
+            bool is_high_cog = false;
+            if (vehicle_index < static_cast<int>(cfg.vehicle_types.size())) {
+                const std::string& vtype = cfg.vehicle_types[vehicle_index];
+                if (vtype == "YUNTI" || vtype == "楼车") {
+                    is_high_cog = true;
+                }
+            }
+            feasibility = is_high_cog ? 0.35 : 0.65;
+
+            if (type == FormationType::COLUMN || type == FormationType::DIAMOND) {
+                feasibility *= 1.2;
+            } else if (type == FormationType::LINE) {
+                feasibility *= 0.7;
+            }
+            break;
+        }
+        case TerrainType::MUDDY:
+            feasibility = 0.55;
+            if (type == FormationType::COLUMN) feasibility *= 1.15;
+            break;
+        case TerrainType::ROCKY:
+            feasibility = 0.70;
+            break;
+        case TerrainType::TRENCH_FIELD: {
+            if (type == FormationType::COLUMN) {
+                feasibility = 0.85;
+            } else if (type == FormationType::DIAMOND) {
+                feasibility = 0.70;
+            } else if (type == FormationType::LINE || type == FormationType::ECHELON) {
+                feasibility = 0.35;
+            } else {
+                feasibility = 0.55;
+            }
+            break;
+        }
+        default:
+            feasibility = 1.0;
+            break;
+    }
+
+    return std::min(1.0, std::max(0.0, feasibility));
+}
+
 double FormationOptimizer::evaluate_formation(
     const FormationConfig& config,
     const FormationOptimizationRequest& req) const {
 
+    TerrainConstraint terrain = req.terrain;
+    if (terrain.terrain_type == TerrainType::FLAT
+        && config.terrain.terrain_type != TerrainType::FLAT) {
+        terrain = config.terrain;
+    }
+
+    double t_surv_pen = terrain_survival_penalty(terrain);
+    double t_cov_pen = terrain_coverage_penalty(terrain, config.attack_width_m);
+    double t_speed_pen = terrain_speed_penalty(terrain);
+
+    double feasibility_avg = 0.0;
+    for (int i = 0; i < config.vehicle_count; ++i) {
+        feasibility_avg += calculate_terrain_feasibility(config, terrain, i);
+    }
+    if (config.vehicle_count > 0) {
+        feasibility_avg /= config.vehicle_count;
+    }
+
     double survival = calc_survival_probability(config, req.rock_fall_rate_per_sec, req.avg_rock_mass_kg);
     double coverage = calc_coverage_score(config, req.wall_length_m, req.wall_height_m);
     double progress = calc_progress_rate(config);
+
+    survival *= t_surv_pen;
+    coverage *= t_cov_pen;
+    progress *= t_speed_pen;
+
+    survival *= feasibility_avg;
+    coverage *= feasibility_avg;
+    progress *= feasibility_avg;
 
     double total = DEFAULT_WEIGHTS.survival * survival
                  + DEFAULT_WEIGHTS.coverage * coverage
@@ -449,10 +588,55 @@ std::vector<FormationConfig> FormationOptimizer::generate_candidates(
         FormationType::DIAMOND
     };
 
+    TerrainConstraint terrain = req.terrain;
+    if (terrain.terrain_type == TerrainType::FLAT
+        && req.baseline.terrain.terrain_type != TerrainType::FLAT) {
+        terrain = req.baseline.terrain;
+    }
+
+    std::vector<double> type_weights(types.size(), 1.0);
+    switch (terrain.terrain_type) {
+        case TerrainType::FLAT:
+        case TerrainType::GENTLE_SLOPE:
+            break;
+        case TerrainType::STEEP_SLOPE:
+        case TerrainType::MUDDY:
+            type_weights[static_cast<size_t>(FormationType::LINE)] = 0.4;
+            type_weights[static_cast<size_t>(FormationType::ECHELON)] = 0.7;
+            type_weights[static_cast<size_t>(FormationType::COLUMN)] = 1.8;
+            type_weights[static_cast<size_t>(FormationType::DIAMOND)] = 1.6;
+            type_weights[static_cast<size_t>(FormationType::WEDGE)] = 1.3;
+            break;
+        case TerrainType::ROCKY:
+            type_weights[static_cast<size_t>(FormationType::LINE)] = 0.6;
+            type_weights[static_cast<size_t>(FormationType::COLUMN)] = 1.4;
+            type_weights[static_cast<size_t>(FormationType::DIAMOND)] = 1.3;
+            break;
+        case TerrainType::TRENCH_FIELD:
+            type_weights[static_cast<size_t>(FormationType::LINE)] = 0.25;
+            type_weights[static_cast<size_t>(FormationType::ECHELON)] = 0.4;
+            type_weights[static_cast<size_t>(FormationType::WEDGE)] = 0.9;
+            type_weights[static_cast<size_t>(FormationType::V_SHAPE)] = 0.8;
+            type_weights[static_cast<size_t>(FormationType::COLUMN)] = 2.2;
+            type_weights[static_cast<size_t>(FormationType::DIAMOND)] = 1.8;
+            break;
+        default:
+            break;
+    }
+
+    double total_weight = 0.0;
+    for (double w : type_weights) total_weight += w;
+    std::vector<double> cumulative_weights;
+    double cum = 0.0;
+    for (double w : type_weights) {
+        cum += w / total_weight;
+        cumulative_weights.push_back(cum);
+    }
+
     std::vector<double> spacings = {1.5, 2.0, 2.5, 3.0, 3.5, 4.0};
     std::vector<double> width_factors = {0.8, 1.0, 1.2, 1.4};
 
-    std::uniform_int_distribution<size_t> type_dist(0, types.size() - 1);
+    std::uniform_real_distribution<double> uniform_dist(0.0, 1.0);
     std::uniform_int_distribution<size_t> spacing_dist(0, spacings.size() - 1);
     std::uniform_int_distribution<size_t> width_dist(0, width_factors.size() - 1);
 
@@ -463,6 +647,7 @@ std::vector<FormationConfig> FormationOptimizer::generate_candidates(
         FormationConfig cfg = get_formation_template(formation_type_to_string(t), req.vehicle_count);
         cfg.wall_distance_m = req.baseline.wall_distance_m > 0 ? req.baseline.wall_distance_m : DEFAULT_WALL_DISTANCE;
         cfg.spacing_m = base_spacing;
+        cfg.terrain = terrain;
         if (cfg.attack_width_m < 1e-6) {
             cfg.attack_width_m = (req.vehicle_count - 1) * cfg.spacing_m + 3.0;
         }
@@ -470,7 +655,15 @@ std::vector<FormationConfig> FormationOptimizer::generate_candidates(
     }
 
     while (static_cast<int>(candidates.size()) < candidate_count) {
-        FormationType t = types[type_dist(rng_)];
+        double r = uniform_dist(rng_);
+        FormationType t = FormationType::LINE;
+        for (size_t i = 0; i < cumulative_weights.size(); ++i) {
+            if (r <= cumulative_weights[i] || i == cumulative_weights.size() - 1) {
+                t = types[i];
+                break;
+            }
+        }
+
         double spacing = spacings[spacing_dist(rng_)];
         double wf = width_factors[width_dist(rng_)];
 
@@ -479,6 +672,7 @@ std::vector<FormationConfig> FormationOptimizer::generate_candidates(
         cfg.vehicle_count = req.vehicle_count;
         cfg.spacing_m = spacing;
         cfg.wall_distance_m = req.baseline.wall_distance_m > 0 ? req.baseline.wall_distance_m : DEFAULT_WALL_DISTANCE;
+        cfg.terrain = terrain;
 
         switch (t) {
             case FormationType::LINE:
@@ -513,7 +707,7 @@ std::vector<FormationConfig> FormationOptimizer::generate_candidates(
         }
         if (!duplicate) {
             candidates.push_back(cfg);
-        } else if (static_cast<int>(candidates.size()) >= types.size() + candidate_count) {
+        } else if (static_cast<int>(candidates.size()) >= static_cast<int>(types.size()) + candidate_count) {
             break;
         }
     }
@@ -543,6 +737,16 @@ FormationOptimizationResult FormationOptimizer::optimize(const FormationOptimiza
     auto candidates = generate_candidates(req, target_count);
     result.candidate_formations = candidates;
 
+    TerrainConstraint terrain = req.terrain;
+    if (terrain.terrain_type == TerrainType::FLAT
+        && req.baseline.terrain.terrain_type != TerrainType::FLAT) {
+        terrain = req.baseline.terrain;
+    }
+
+    double t_surv_pen = terrain_survival_penalty(terrain);
+    double t_cov_pen = terrain_coverage_penalty(terrain, req.baseline.attack_width_m > 0 ? req.baseline.attack_width_m : 10.0);
+    double t_speed_pen = terrain_speed_penalty(terrain);
+
     double best_score = -1.0;
     FormationConfig best_cfg;
     double best_survival = 0.0;
@@ -550,9 +754,27 @@ FormationOptimizationResult FormationOptimizer::optimize(const FormationOptimiza
     double best_progress = 0.0;
 
     for (const auto& cfg : candidates) {
+        double cfg_t_cov_pen = terrain_coverage_penalty(terrain, cfg.attack_width_m);
+        double feasibility_avg = 0.0;
+        for (int i = 0; i < cfg.vehicle_count; ++i) {
+            feasibility_avg += calculate_terrain_feasibility(cfg, terrain, i);
+        }
+        if (cfg.vehicle_count > 0) {
+            feasibility_avg /= cfg.vehicle_count;
+        }
+
         double survival = calc_survival_probability(cfg, req.rock_fall_rate_per_sec, req.avg_rock_mass_kg);
         double coverage = calc_coverage_score(cfg, req.wall_length_m, req.wall_height_m);
         double progress = calc_progress_rate(cfg);
+
+        survival *= t_surv_pen;
+        coverage *= cfg_t_cov_pen;
+        progress *= t_speed_pen;
+
+        survival *= feasibility_avg;
+        coverage *= feasibility_avg;
+        progress *= feasibility_avg;
+
         double score = DEFAULT_WEIGHTS.survival * survival
                      + DEFAULT_WEIGHTS.coverage * coverage
                      + DEFAULT_WEIGHTS.progress * progress;
@@ -566,6 +788,7 @@ FormationOptimizationResult FormationOptimizer::optimize(const FormationOptimiza
         }
     }
 
+    best_cfg.terrain = terrain;
     result.best_formation = best_cfg;
     result.survival_probability = best_survival;
     result.avg_coverage_score = best_coverage;
@@ -594,16 +817,75 @@ FormationOptimizationResult FormationOptimizer::optimize(const FormationOptimiza
         result.recommendations.push_back(oss.str());
     }
 
+    switch (terrain.terrain_type) {
+        case TerrainType::TRENCH_FIELD: {
+            std::ostringstream oss;
+            oss << "壕沟众多，建议采用纵队(COLUMN)逐次通过，避免横排(LINE)队形跨越壕沟。";
+            if (terrain.trench_width_m > 2.0) {
+                oss << "壕沟宽度达" << std::fixed << std::setprecision(1) << terrain.trench_width_m
+                    << "米，需确保车辆越壕能力足够。";
+            }
+            result.recommendations.push_back(oss.str());
+            break;
+        }
+        case TerrainType::STEEP_SLOPE: {
+            std::ostringstream oss;
+            oss << "地形陡峭(坡度" << std::fixed << std::setprecision(1) << terrain.slope_deg
+                << "°)，纵队或菱形队形爬坡稳定性更佳。";
+            bool has_high_cog = false;
+            for (const auto& vt : best_cfg.vehicle_types) {
+                if (vt == "YUNTI" || vt == "楼车") { has_high_cog = true; break; }
+            }
+            if (has_high_cog) {
+                oss << "编队中含高重心楼车，应降低速度并拉开前后间距防止倾覆。";
+            }
+            result.recommendations.push_back(oss.str());
+            break;
+        }
+        case TerrainType::MUDDY: {
+            std::ostringstream oss;
+            oss << "泥泞地形需减小间距至1.5-2.0米以保持救援距离，防止车辆陷车无法互救。";
+            if (terrain.mud_depth_cm > 20.0) {
+                oss << "泥泞深度达" << std::fixed << std::setprecision(0) << terrain.mud_depth_cm
+                    << "厘米，建议使用楔形(WEDGE)队形开辟通路。";
+            }
+            result.recommendations.push_back(oss.str());
+            break;
+        }
+        case TerrainType::ROCKY: {
+            std::ostringstream oss;
+            oss << "岩石地带，建议采用菱形(DIAMOND)或楔形(WEDGE)队形分散障碍规避压力。";
+            if (terrain.obstacle_density > 0.4) {
+                oss << "障碍密度较高，需保证足够的车辆间距(" << std::fixed << std::setprecision(1)
+                    << std::max(2.5, best_cfg.spacing_m) << "米以上)便于机动避让。";
+            }
+            result.recommendations.push_back(oss.str());
+            break;
+        }
+        case TerrainType::GENTLE_SLOPE: {
+            std::ostringstream oss;
+            oss << "缓坡地形，整体影响较小，但高重心车辆仍需注意行驶稳定性。";
+            result.recommendations.push_back(oss.str());
+            break;
+        }
+        default:
+            break;
+    }
+
     {
         std::ostringstream oss;
         oss << std::fixed << std::setprecision(1);
         oss << "当前间距 " << best_cfg.spacing_m << "米，";
-        if (best_survival < 0.75) {
+        if (terrain.terrain_type == TerrainType::MUDDY && best_cfg.spacing_m > 2.5) {
+            oss << "泥泞地形建议减小间距至2.0米以内以保持救援距离。";
+        } else if (best_survival < 0.75 && terrain.terrain_type == TerrainType::FLAT) {
             oss << "建议增大车辆间距至3.0-4.0米以降低被落石击中的密度，可提升生存率约"
                 << std::setprecision(0) << (0.85 - best_survival) * 100 << "%。";
-        } else if (best_coverage < 0.70 && best_cfg.attack_width_m < req.wall_length_m * 0.8) {
+        } else if (best_coverage < 0.70 && best_cfg.attack_width_m < req.wall_length_m * 0.8
+                   && (terrain.terrain_type == TerrainType::FLAT || terrain.terrain_type == TerrainType::GENTLE_SLOPE)) {
             oss << "建议扩大攻击宽度至" << req.wall_length_m * 0.9 << "米以上，可更全面地覆盖城墙防御面。";
-        } else if (best_progress < 0.75 && best_type != FormationType::WEDGE) {
+        } else if (best_progress < 0.75 && best_type != FormationType::WEDGE
+                   && terrain.terrain_type == TerrainType::FLAT) {
             oss << "如需加快推进速度，可考虑改用楔形(WEDGE)队形。";
         } else {
             oss << "该间距配置合理，兼顾了生存率、覆盖度与推进效率。";
@@ -617,10 +899,14 @@ FormationOptimizationResult FormationOptimizer::optimize(const FormationOptimiza
             << best_survival * 100 << "%，覆盖度 "
             << best_coverage * 100 << "%，推进效率 "
             << best_progress * 100 << "%。";
+        if (terrain.terrain_type != TerrainType::FLAT) {
+            oss << "地形惩罚系数：速度×" << std::setprecision(2) << t_speed_pen
+                << "，生存×" << t_surv_pen << "，覆盖×" << t_cov_pen << "。";
+        }
         if (req.rock_fall_rate_per_sec > 2.0) {
             oss << "当前落石频率较高(" << req.rock_fall_rate_per_sec << "/秒)，优先保证队形疏散度。";
         }
-        if (req.wall_length_m > 20.0) {
+        if (req.wall_length_m > 20.0 && (terrain.terrain_type == TerrainType::FLAT || terrain.terrain_type == TerrainType::GENTLE_SLOPE)) {
             oss << "城墙较宽(" << req.wall_length_m << "米)，建议优先考虑覆盖面大的队形。";
         }
         result.recommendations.push_back(oss.str());

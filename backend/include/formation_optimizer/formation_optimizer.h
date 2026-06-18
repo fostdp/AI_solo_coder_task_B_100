@@ -51,6 +51,13 @@ private:
 
     double calc_progress_rate(const FormationConfig& config) const;
 
+    double terrain_speed_penalty(const TerrainConstraint& t) const;
+    double terrain_survival_penalty(const TerrainConstraint& t) const;
+    double terrain_coverage_penalty(const TerrainConstraint& t, double formation_width) const;
+    double calculate_terrain_feasibility(const FormationConfig& cfg,
+                                         const TerrainConstraint& t,
+                                         int vehicle_index) const;
+
     FormationVehicle create_vehicle_in_formation(int index,
                                                   FormationType type,
                                                   int total,
