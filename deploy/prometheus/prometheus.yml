@@ -1,0 +1,54 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+  external_labels:
+    cluster: 'fenyun-vehicle'
+    environment: 'production'
+
+rule_files:
+  # - "alerts.yml"
+
+alerting:
+  # alertmanagers: ...
+
+scrape_configs:
+
+  # --------- 轒辒车 C++后端 ---------
+  - job_name: 'fenyun-backend'
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'fenyun-backend:9091'
+        labels:
+          component: 'backend-cpp'
+          module: 'core'
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'fenyun_(.*)'
+        action: keep
+
+  # --------- ClickHouse (使用 clickhouse-exporter) ---------
+  - job_name: 'clickhouse'
+    scheme: http
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'clickhouse:9363'
+        labels:
+          component: 'database'
+    # 若不使用 exporter 则跳过
+    honor_labels: true
+
+  # --------- 自身监控 ---------
+  - job_name: 'prometheus-self'
+    static_configs:
+      - targets: ['127.0.0.1:9090']
+        labels:
+          component: 'monitoring'
+
+  # --------- Node-exporter (若部署了) ---------
+  # - job_name: 'node-exporter'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']

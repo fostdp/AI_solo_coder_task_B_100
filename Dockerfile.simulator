@@ -1,0 +1,31 @@
+# ============================================================
+# 传感器模拟器 Dockerfile - Python
+# ============================================================
+
+FROM docker.io/library/python:3.12-slim-bookworm
+
+LABEL org.opencontainers.image.title="Fenyun Sensor Simulator" \
+      org.opencontainers.image.description="轒辒车传感器模拟器 - 可配置滚石大小/冲击高度" \
+      org.opencontainers.image.version="1.2.0"
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY simulator/requirements.txt* ./
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+
+COPY simulator/sensor_simulator.py ./
+RUN chmod +x sensor_simulator.py \
+ && python -m py_compile sensor_simulator.py
+
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD python -c "import sys; sys.exit(0)" || exit 1
+
+ENTRYPOINT ["python", "/app/sensor_simulator.py"]
+CMD ["--api", "http://fenyun-backend:8080", \
+     "--vehicles", "3", \
+     "--interval", "60", \
+     "--impact-profile", "normal"]

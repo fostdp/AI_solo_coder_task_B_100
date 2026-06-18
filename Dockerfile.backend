@@ -1,0 +1,103 @@
+# ============================================================
+# 轒辒车后端服务 - C++ 多阶段构建 Dockerfile
+# 阶段1 builder: 拉依赖 + 编译
+# 阶段2 runtime: 只保留二进制 + 配置 + 日志目录
+# ============================================================
+
+# ---------------- 阶段1: 构建 ----------------
+FROM docker.io/library/gcc:13-bookworm AS builder
+
+LABEL stage=fenyun-builder
+
+WORKDIR /src
+
+# 先装构建工具链（缓存层）
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        cmake=3.25* \
+        ninja-build \
+        ca-certificates \
+        pkg-config \
+        libcurl4-openssl-dev \
+        git \
+ && rm -rf /var/lib/apt/lists/*
+
+# 仅拷贝 CMakeLists, 以便拉取第三方依赖时命中缓存
+COPY backend/CMakeLists.txt ./backend/
+
+WORKDIR /src/backend/build
+RUN cmake .. -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_COMPILER=g++ \
+        -DENABLE_SPDLOG=ON \
+        -DENABLE_PROMETHEUS=ON \
+        -DUSE_BOOST_LOCKFREE=OFF \
+        -DBUILD_TESTS=OFF 2>&1 | tail -80 || true
+
+# 拉取第三方依赖（即使上面没编译成功也先让依赖下载）
+WORKDIR /src/backend
+
+# 拷贝所有源码
+COPY backend/src        ./src
+COPY backend/include    ./include
+COPY backend/config     ./config
+
+# 真正编译
+WORKDIR /src/backend/build
+RUN cmake .. -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CXX_COMPILER=g++ \
+        -DENABLE_SPDLOG=ON \
+        -DENABLE_PROMETHEUS=ON \
+        -DUSE_BOOST_LOCKFREE=OFF \
+        -DBUILD_TESTS=OFF \
+ && cmake --build . --target fenyun_backend -j$(nproc) 2>&1 | tail -100
+
+# 确认产物存在
+RUN ls -lah bin/fenyun_backend \
+ && ldd bin/fenyun_backend | grep -v "not found" || true
+
+
+# ---------------- 阶段2: 运行时 ----------------
+FROM debian:bookworm-slim AS runtime
+
+LABEL org.opencontainers.image.title="Fenyun Vehicle Backend" \
+      org.opencontainers.image.description="轒辒车结构防护仿真后端 - C++服务" \
+      org.opencontainers.image.version="1.2.0"
+
+ENV FENYUN_CONFIG_DIR=/app/config \
+    FENYUN_HTTP_PORT=8080 \
+    FENYUN_LOG_DIR=/app/logs \
+    FENYUN_CH_HOST=clickhouse \
+    FENYUN_CH_PORT=8123 \
+    FENYUN_MQTT_BROKER=tcp://mosquitto:1883
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        libcurl4 \
+        tini \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /src/backend/build/bin/fenyun_backend    /app/fenyun_backend
+COPY --from=builder /src/backend/build/bin/config            /app/config
+RUN chmod +x /app/fenyun_backend \
+ && mkdir -p /app/logs /app/config
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://127.0.0.1:8080/api/health || exit 1
+
+# 8080 HTTP API, 9091 Prometheus metrics
+EXPOSE 8080 9091
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/app/fenyun_backend", \
+     "--http-port", "8080", \
+     "--config-dir", "/app/config", \
+     "--ch-host", "clickhouse", \
+     "--ch-port", "8123", \
+     "--mqtt-broker", "tcp://mosquitto:1883", \
+     "--def-threshold", "20"]

@@ -1,0 +1,311 @@
+# ============================================================
+# 轒辒车结构防护仿真系统  v1.2
+# Docker Compose 编排：C++后端 + ClickHouse + MQTT Broker + 传感器模拟器 + Nginx前端
+#
+# 快速启动:
+#   docker compose up -d --build
+#
+# 服务端口:
+#   :80        Nginx (前端 + API反代)
+#   :8080      C++后端HTTP API (直连，不经过Nginx)
+#   :9091      Prometheus 指标
+#   :8123      ClickHouse HTTP
+#   :9000      ClickHouse Native TCP
+#   :1883      MQTT Broker
+#   :9001      MQTT WebSocket
+# ============================================================
+
+name: fenyun-vehicle-system
+
+services:
+
+  # ============================================================
+  # 1. ClickHouse 数据库 - 高频时序存储
+  # ============================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    hostname: clickhouse
+    container_name: fenyun-clickhouse
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: fenyun_vehicle
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      TZ: UTC
+    volumes:
+      - ch_data:/var/lib/clickhouse
+      - ch_logs:/var/log/clickhouse-server
+      - ./database/init_clickhouse.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "127.0.0.1:8123:8123"   # HTTP (仅本机)
+      - "127.0.0.1:9000:9000"   # Native TCP (仅本机)
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/?query=SELECT%201"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - fenyun-net
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================================
+  # 2. Eclipse Mosquitto MQTT Broker
+  # ============================================================
+  mosquitto:
+    image: eclipse-mosquitto:2.0-openssl
+    hostname: mosquitto
+    container_name: fenyun-mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./deploy/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+    ports:
+      - "127.0.0.1:1883:1883"   # MQTT TCP (仅本机)
+      - "127.0.0.1:9001:9001"   # MQTT WebSocket (仅本机)
+    healthcheck:
+      test: ["CMD-SHELL", "test -S /proc/net/tcp || (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null && echo ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - fenyun-net
+
+  # ============================================================
+  # 3. C++ 后端服务 - 模块化架构 + 指标采集 + spdlog
+  # ============================================================
+  fenyun-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: runtime
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: fenyun/backend:1.2.0
+    hostname: fenyun-backend
+    container_name: fenyun-backend
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    environment:
+      TZ: UTC
+      FENYUN_HTTP_PORT: 8080
+      FENYUN_CONFIG_DIR: /app/config
+      FENYUN_LOG_DIR: /app/logs
+      FENYUN_CH_HOST: clickhouse
+      FENYUN_CH_PORT: 8123
+      FENYUN_MQTT_BROKER: tcp://mosquitto:1883
+      FENYUN_DEF_THRESHOLD: 20
+      FENYUN_PROMETHEUS_PORT: 9091
+    volumes:
+      - fenyun_logs:/app/logs
+      - ./backend/config:/app/config:ro
+    ports:
+      - "8080:8080"               # HTTP API
+      - "127.0.0.1:9091:9091"     # Prometheus metrics (仅本机)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - fenyun-net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ============================================================
+  # 4. 轒辒车传感器模拟器 (Python)
+  # ============================================================
+  sensor-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulator
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: fenyun/sensor-simulator:1.2.0
+    hostname: fenyun-sim
+    container_name: fenyun-sensor-simulator
+    restart: unless-stopped
+    depends_on:
+      fenyun-backend:
+        condition: service_healthy
+    environment:
+      TZ: UTC
+      FENYUN_API: http://fenyun-backend:8080
+      FENYUN_VEHICLES: 3
+      FENYUN_INTERVAL: 60
+    # 命令行参数覆盖（可选的场景配置）
+    command: [
+      "--api", "http://fenyun-backend:8080",
+      "--vehicles", "3",
+      "--interval", "60",
+      "--impact-profile", "normal",
+      "--wear-scale", "1.0"
+    ]
+    networks:
+      - fenyun-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+
+  # profile: heavy-sim - 密集场景滚石模拟
+  sensor-simulator-heavy:
+    profiles: ["heavy-sim", "all"]
+    extends: sensor-simulator
+    container_name: fenyun-sim-heavy
+    command: [
+      "--api", "http://fenyun-backend:8080",
+      "--vehicles", "5",
+      "--interval", "30",
+      "--impact-profile", "barrage",
+      "--wear-scale", "1.5"
+    ]
+
+  # profile: siege - 确定性固定滚石参数（如军事史实验重放）
+  sensor-simulator-siege:
+    profiles: ["siege", "all"]
+    extends: sensor-simulator
+    container_name: fenyun-sim-siege
+    command: [
+      "--api", "http://fenyun-backend:8080",
+      "--vehicles", "5",
+      "--interval", "10",
+      "--fixed-rock-mass", "100",
+      "--fixed-drop-height", "20",
+      "--wear-scale", "2.0"
+    ]
+
+  # ============================================================
+  # 5. Nginx 前端 - 静态资源 (Gzip/Brotli 预压缩) + API反代
+  # ============================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: runtime
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: fenyun/frontend:1.2.0
+    hostname: fenyun-frontend
+    container_name: fenyun-frontend
+    restart: unless-stopped
+    depends_on:
+      - fenyun-backend
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/nginx-health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - fenyun-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+
+  # ============================================================
+  # 6. Prometheus (可选 profile) - 指标采集
+  # ============================================================
+  prometheus:
+    profiles: ["monitoring", "all"]
+    image: prom/prometheus:v2.53-alpine
+    container_name: fenyun-prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - fenyun-net
+
+  # ============================================================
+  # 7. Grafana (可选 profile) - 指标可视化
+  # ============================================================
+  grafana:
+    profiles: ["monitoring", "all"]
+    image: grafana/grafana-oss:11.1.0
+    container_name: fenyun-grafana
+    hostname: grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - clickhouse
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: Fenyun@2025
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - fenyun-net
+
+
+# ============================================================
+# 共享网络 & 命名卷
+# ============================================================
+networks:
+  fenyun-net:
+    name: fenyun-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  ch_data:
+    name: fenyun-ch-data
+  ch_logs:
+    name: fenyun-ch-logs
+  mqtt_data:
+    name: fenyun-mqtt-data
+  mqtt_logs:
+    name: fenyun-mqtt-logs
+  fenyun_logs:
+    name: fenyun-backend-logs
+  prom_data:
+    name: fenyun-prom-data
+  grafana_data:
+    name: fenyun-grafana-data
