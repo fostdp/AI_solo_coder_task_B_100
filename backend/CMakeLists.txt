@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(fenyun_vehicle_backend VERSION 1.2.0 LANGUAGES CXX)
+project(fenyun_vehicle_backend VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -128,25 +128,64 @@ set(BACKEND_HEADERS
 
 find_package(Threads REQUIRED)
 
-add_executable(fenyun_backend ${BACKEND_SOURCES} ${BACKEND_HEADERS})
+set(CORE_SOURCES
+    src/fenyun_application.cpp
+    src/fenyun_http_server.cpp
+    src/common/metrics_collector.cpp
+    src/common/logger_init.cpp
+    src/config/config_loader.cpp
+    src/dtu_receiver/dtu_receiver.cpp
+    src/impact_simulator/impact_simulator.cpp
+    src/protection_optimizer/protection_optimizer.cpp
+    src/formation_optimizer/formation_optimizer.cpp
+    src/vehicle_comparator/vehicle_comparator.cpp
+    src/user_session/user_session_manager.cpp
+    src/alarm_mqtt/alarm_mqtt.cpp
+    src/storage/clickhouse_client.cpp
+)
 
-target_link_libraries(fenyun_backend PRIVATE Threads::Threads)
+set(CORE_HEADERS
+    include/fenyun_application.h
+    include/fenyun_http_server.h
+    include/common/data_types.h
+    include/common/json.h
+    include/common/lockfree_queue.h
+    include/common/metrics_collector.h
+    include/common/logger_init.h
+    include/config/config_loader.h
+    include/dtu_receiver/dtu_receiver.h
+    include/impact_simulator/impact_simulator.h
+    include/protection_optimizer/protection_optimizer.h
+    include/formation_optimizer/formation_optimizer.h
+    include/vehicle_comparator/vehicle_comparator.h
+    include/user_session/user_session_manager.h
+    include/alarm_mqtt/alarm_mqtt.h
+    include/storage/clickhouse_client.h
+)
+
+add_library(fenyun_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+
+target_link_libraries(fenyun_core PUBLIC Threads::Threads)
+target_include_directories(fenyun_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
 
 if(ENABLE_SPDLOG)
-    target_link_libraries(fenyun_backend PRIVATE spdlog::spdlog_header_only)
+    target_link_libraries(fenyun_core PUBLIC spdlog::spdlog_header_only)
 endif()
 
 if(ENABLE_PROMETHEUS)
-    target_link_libraries(fenyun_backend PRIVATE prometheus-cpp::core prometheus-cpp::pull)
+    target_link_libraries(fenyun_core PUBLIC prometheus-cpp::core prometheus-cpp::pull)
 endif()
 
 if(USE_BOOST_LOCKFREE)
-    target_link_libraries(fenyun_backend PRIVATE ${Boost_LIBRARIES})
+    target_link_libraries(fenyun_core PUBLIC ${Boost_LIBRARIES})
 endif()
 
 if(WIN32)
-    target_link_libraries(fenyun_backend PRIVATE ws2_32)
+    target_link_libraries(fenyun_core PUBLIC ws2_32)
 endif()
+
+add_executable(fenyun_backend src/main.cpp)
+target_link_libraries(fenyun_backend PRIVATE fenyun_core)
 
 set_target_properties(fenyun_backend PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
