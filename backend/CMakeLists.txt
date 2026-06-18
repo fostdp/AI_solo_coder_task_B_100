@@ -84,104 +84,119 @@ else()
     message(STATUS "Boost.Lockfree: DISABLED (using internal SPSC lock-free queue)")
 endif()
 
-set(BACKEND_SOURCES
-    src/main.cpp
-    src/fenyun_application.cpp
-    src/fenyun_http_server.cpp
-
-    src/common/metrics_collector.cpp
-    src/common/logger_init.cpp
-
-    src/config/config_loader.cpp
-
-    src/dtu_receiver/dtu_receiver.cpp
-    src/impact_simulator/impact_simulator.cpp
-    src/protection_optimizer/protection_optimizer.cpp
-    src/formation_optimizer/formation_optimizer.cpp
-    src/alarm_mqtt/alarm_mqtt.cpp
-    src/storage/clickhouse_client.cpp
-    src/user_session/user_session_manager.cpp
-    src/vehicle_comparator/vehicle_comparator.cpp
-)
-
-set(BACKEND_HEADERS
-    include/fenyun_application.h
-    include/fenyun_http_server.h
-
-    include/common/data_types.h
-    include/common/json.h
-    include/common/lockfree_queue.h
-    include/common/metrics_collector.h
-    include/common/logger_init.h
-
-    include/config/config_loader.h
-
-    include/dtu_receiver/dtu_receiver.h
-    include/impact_simulator/impact_simulator.h
-    include/protection_optimizer/protection_optimizer.h
-    include/formation_optimizer/formation_optimizer.h
-    include/alarm_mqtt/alarm_mqtt.h
-    include/storage/clickhouse_client.h
-    include/user_session/user_session_manager.h
-    include/vehicle_comparator/vehicle_comparator.h
-)
-
 find_package(Threads REQUIRED)
 
-set(CORE_SOURCES
-    src/fenyun_application.cpp
-    src/fenyun_http_server.cpp
+add_library(fenyun_common STATIC
     src/common/metrics_collector.cpp
     src/common/logger_init.cpp
-    src/config/config_loader.cpp
-    src/dtu_receiver/dtu_receiver.cpp
-    src/impact_simulator/impact_simulator.cpp
-    src/protection_optimizer/protection_optimizer.cpp
-    src/formation_optimizer/formation_optimizer.cpp
-    src/vehicle_comparator/vehicle_comparator.cpp
-    src/user_session/user_session_manager.cpp
-    src/alarm_mqtt/alarm_mqtt.cpp
-    src/storage/clickhouse_client.cpp
-)
-
-set(CORE_HEADERS
-    include/fenyun_application.h
-    include/fenyun_http_server.h
     include/common/data_types.h
     include/common/json.h
     include/common/lockfree_queue.h
     include/common/metrics_collector.h
     include/common/logger_init.h
+)
+target_link_libraries(fenyun_common PUBLIC Threads::Threads)
+target_include_directories(fenyun_common PUBLIC ${CMAKE_SOURCE_DIR}/include)
+if(ENABLE_SPDLOG)
+    target_link_libraries(fenyun_common PUBLIC spdlog::spdlog_header_only)
+endif()
+if(USE_BOOST_LOCKFREE)
+    target_link_libraries(fenyun_common PUBLIC ${Boost_LIBRARIES})
+endif()
+if(WIN32)
+    target_link_libraries(fenyun_common PUBLIC ws2_32)
+endif()
+
+add_library(fenyun_config STATIC
+    src/config/config_loader.cpp
     include/config/config_loader.h
-    include/dtu_receiver/dtu_receiver.h
+)
+target_link_libraries(fenyun_config PUBLIC fenyun_common)
+
+add_library(fenyun_impact_simulator STATIC
+    src/impact_simulator/impact_simulator.cpp
     include/impact_simulator/impact_simulator.h
-    include/protection_optimizer/protection_optimizer.h
-    include/formation_optimizer/formation_optimizer.h
+)
+target_link_libraries(fenyun_impact_simulator PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_vehicle_comparator STATIC
+    src/vehicle_comparator/vehicle_comparator.cpp
     include/vehicle_comparator/vehicle_comparator.h
+)
+target_link_libraries(fenyun_vehicle_comparator PUBLIC fenyun_common fenyun_config fenyun_impact_simulator)
+
+add_library(fenyun_era_comparator STATIC
+    src/era_comparator/era_comparator.cpp
+    include/era_comparator/era_comparator.h
+)
+target_link_libraries(fenyun_era_comparator PUBLIC fenyun_common fenyun_config fenyun_vehicle_comparator)
+
+add_library(fenyun_formation_optimizer STATIC
+    src/formation_optimizer/formation_optimizer.cpp
+    include/formation_optimizer/formation_optimizer.h
+)
+target_link_libraries(fenyun_formation_optimizer PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_vr_assault STATIC
+    src/vr_assault/vr_assault_engine.cpp
+    include/vr_assault/vr_assault_engine.h
+)
+target_link_libraries(fenyun_vr_assault PUBLIC fenyun_common fenyun_config fenyun_impact_simulator)
+
+add_library(fenyun_protection_optimizer STATIC
+    src/protection_optimizer/protection_optimizer.cpp
+    include/protection_optimizer/protection_optimizer.h
+)
+target_link_libraries(fenyun_protection_optimizer PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_dtu_receiver STATIC
+    src/dtu_receiver/dtu_receiver.cpp
+    include/dtu_receiver/dtu_receiver.h
+)
+target_link_libraries(fenyun_dtu_receiver PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_user_session STATIC
+    src/user_session/user_session_manager.cpp
     include/user_session/user_session_manager.h
+)
+target_link_libraries(fenyun_user_session PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_alarm_mqtt STATIC
+    src/alarm_mqtt/alarm_mqtt.cpp
     include/alarm_mqtt/alarm_mqtt.h
+)
+target_link_libraries(fenyun_alarm_mqtt PUBLIC fenyun_common fenyun_config)
+
+add_library(fenyun_storage STATIC
+    src/storage/clickhouse_client.cpp
     include/storage/clickhouse_client.h
 )
+target_link_libraries(fenyun_storage PUBLIC fenyun_common fenyun_config)
 
-add_library(fenyun_core STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+add_library(fenyun_core STATIC
+    src/fenyun_application.cpp
+    src/fenyun_http_server.cpp
+    include/fenyun_application.h
+    include/fenyun_http_server.h
+)
 
-target_link_libraries(fenyun_core PUBLIC Threads::Threads)
-target_include_directories(fenyun_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
-
-if(ENABLE_SPDLOG)
-    target_link_libraries(fenyun_core PUBLIC spdlog::spdlog_header_only)
-endif()
+target_link_libraries(fenyun_core PUBLIC
+    fenyun_common
+    fenyun_config
+    fenyun_impact_simulator
+    fenyun_vehicle_comparator
+    fenyun_era_comparator
+    fenyun_formation_optimizer
+    fenyun_vr_assault
+    fenyun_protection_optimizer
+    fenyun_dtu_receiver
+    fenyun_user_session
+    fenyun_alarm_mqtt
+    fenyun_storage
+)
 
 if(ENABLE_PROMETHEUS)
     target_link_libraries(fenyun_core PUBLIC prometheus-cpp::core prometheus-cpp::pull)
-endif()
-
-if(USE_BOOST_LOCKFREE)
-    target_link_libraries(fenyun_core PUBLIC ${Boost_LIBRARIES})
-endif()
-
-if(WIN32)
-    target_link_libraries(fenyun_core PUBLIC ws2_32)
 endif()
 
 add_executable(fenyun_backend src/main.cpp)

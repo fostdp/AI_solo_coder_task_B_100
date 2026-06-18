@@ -10,6 +10,9 @@
 #include <thread>
 #include <vector>
 #include <mutex>
+#include <unordered_map>
+#include <deque>
+#include <condition_variable>
 
 namespace fenyun {
 
@@ -47,8 +50,33 @@ public:
     uint64_t simulations_run() const { return sims_run_.load(); }
     uint64_t output_dropped() const { return output_dropped_.load(); }
 
+    struct PlasticityTask {
+        uint64_t task_id;
+        SensorData sensor_data;
+        MaterialProperties material;
+        JohnsonCookParams jc;
+        std::atomic<bool> completed {false};
+        SimulationResult result;
+        std::atomic<bool> cancelled {false};
+    };
+
+    using PlasticityTaskPtr = std::shared_ptr<PlasticityTask>;
+
+    PlasticityTaskPtr submit_plasticity_task(const SensorData& data);
+    bool is_task_complete(uint64_t task_id) const;
+    SimulationResult get_task_result(uint64_t task_id, int timeout_ms = -1);
+    size_t pending_tasks() const;
+    void set_thread_pool_size(size_t n);
+    void cleanup_completed_tasks();
+
 private:
     void worker_loop(int thread_id);
+    void worker_thread();
+    PlasticityTaskPtr pop_next_task();
+    void run_plasticity_calc(PlasticityTask& task);
+    void start_workers();
+    void stop_workers();
+    void remove_task(uint64_t task_id);
 
     double calc_johnson_cook_flow_stress(const std::string& material,
                                          const JohnsonCookParams& jc,
@@ -94,6 +122,15 @@ private:
 
     double default_strain_rate_ = 100.0;
     double default_temperature_K_ = 293.15;
+
+    mutable std::mutex task_mutex_;
+    std::unordered_map<uint64_t, PlasticityTaskPtr> tasks_;
+    std::vector<std::thread> worker_threads_;
+    std::condition_variable task_cv_;
+    std::deque<uint64_t> task_queue_;
+    std::atomic<uint64_t> next_task_id_ {1};
+    std::atomic<bool> workers_running_ {false};
+    size_t thread_pool_size_ = 2;
 };
 
 }

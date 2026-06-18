@@ -3,7 +3,10 @@ enable_testing()
 set(TEST_SOURCES
     test_main.cpp
     vehicle_comparator_test.cpp
+    era_comparator_test.cpp
     formation_optimizer_test.cpp
+    vr_assault_test.cpp
+    impact_simulator_test.cpp
     user_session_manager_test.cpp
     config_loader_test.cpp
     integration_test.cpp
@@ -25,7 +28,7 @@ if(WIN32)
 endif()
 
 add_test(NAME fenyun_unit_tests COMMAND fenyun_tests
-    --gtest_filter="VehicleComparatorUnit.*:FormationOptimizerUnit.*:UserSessionUnit.*:ConfigLoaderUnit.*"
+    --gtest_filter="VehicleComparatorUnit.*:EraComparatorUnit.*:FormationOptimizerUnit.*:VRAssaultEngineUnit.*:ImpactSimulatorUnit.*:UserSessionUnit.*:ConfigLoaderUnit.*"
 )
 
 add_test(NAME fenyun_integration_tests COMMAND fenyun_tests

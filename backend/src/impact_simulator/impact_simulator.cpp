@@ -15,6 +15,7 @@ ImpactSimulator::ImpactSimulator(std::shared_ptr<ConfigLoader> config)
         sim_config_.grid_size = sc.default_grid_size;
         sim_config_.jc_bisection_iterations = sc.jc_bisection_iterations;
         sim_config_.worker_threads = sc.threads;
+        thread_pool_size_ = static_cast<size_t>(std::max(1, sc.threads));
     }
 }
 
@@ -36,6 +37,7 @@ void ImpactSimulator::start() {
     for (int i = 0; i < n; ++i) {
         workers_.emplace_back(&ImpactSimulator::worker_loop, this, i);
     }
+    start_workers();
 }
 
 void ImpactSimulator::stop() {
@@ -44,6 +46,66 @@ void ImpactSimulator::stop() {
         if (t.joinable()) t.join();
     }
     workers_.clear();
+    stop_workers();
+}
+
+void ImpactSimulator::start_workers() {
+    if (workers_running_.exchange(true)) return;
+    size_t n = std::max(size_t(1), thread_pool_size_);
+    for (size_t i = 0; i < n; ++i) {
+        worker_threads_.emplace_back(&ImpactSimulator::worker_thread, this);
+    }
+}
+
+void ImpactSimulator::stop_workers() {
+    if (!workers_running_.exchange(false)) return;
+    task_cv_.notify_all();
+    for (auto& t : worker_threads_) {
+        if (t.joinable()) t.join();
+    }
+    worker_threads_.clear();
+    {
+        std::lock_guard<std::mutex> lock(task_mutex_);
+        task_queue_.clear();
+    }
+}
+
+void ImpactSimulator::worker_thread() {
+    while (workers_running_.load()) {
+        PlasticityTaskPtr task = pop_next_task();
+        if (task) {
+            if (!task->cancelled.load()) {
+                run_plasticity_calc(*task);
+            }
+            task->completed.store(true);
+        }
+    }
+}
+
+ImpactSimulator::PlasticityTaskPtr ImpactSimulator::pop_next_task() {
+    std::unique_lock<std::mutex> lock(task_mutex_);
+    task_cv_.wait(lock, [this]() {
+        return !task_queue_.empty() || !workers_running_.load();
+    });
+
+    if (!workers_running_.load() && task_queue_.empty()) {
+        return nullptr;
+    }
+
+    if (task_queue_.empty()) {
+        return nullptr;
+    }
+
+    uint64_t task_id = task_queue_.front();
+    task_queue_.pop_front();
+
+    auto it = tasks_.find(task_id);
+    if (it == tasks_.end()) {
+        return nullptr;
+    }
+
+    PlasticityTaskPtr task = it->second;
+    return task;
 }
 
 void ImpactSimulator::worker_loop(int /*thread_id*/) {
@@ -54,7 +116,6 @@ void ImpactSimulator::worker_loop(int /*thread_id*/) {
             if (output_queue_ && !output_queue_->push(result)) {
                 output_dropped_.fetch_add(1);
             }
-            sims_run_.fetch_add(1);
         } else {
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
@@ -151,15 +212,156 @@ double ImpactSimulator::calc_penetration_depth_jc(const std::string& material,
 }
 
 SimulationResult ImpactSimulator::run_simulation(const SensorData& data) {
-    SimulationResult result{};
-    result.simulation_id = sim_id_counter_.fetch_add(1) + 1;
+    PlasticityTaskPtr task = submit_plasticity_task(data);
+    SimulationResult result = get_task_result(task->task_id);
+    remove_task(task->task_id);
+    sims_run_.fetch_add(1);
+    return result;
+}
+
+void ImpactSimulator::generate_deformation_field(std::vector<double>& field,
+                                                  double max_deformation,
+                                                  double impact_x,
+                                                  double impact_y) const {
+    int n = sim_config_.grid_size;
+    field.resize(static_cast<size_t>(n * n));
+    double L = sim_config_.roof_length_m;
+    double W = sim_config_.roof_width_m;
+    double cx = std::max(0.0, std::min(L, impact_x)) / L * (n - 1);
+    double cy = std::max(0.0, std::min(W, impact_y)) / W * (n - 1);
+    double sigma = 1.8 + (max_deformation / 50.0);
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            double d2 = (i - cx) * (i - cx) + (j - cy) * (j - cy);
+            field[static_cast<size_t>(i * n + j)] = max_deformation * std::exp(-d2 / (2 * sigma * sigma));
+        }
+    }
+}
+
+void ImpactSimulator::generate_stress_field(std::vector<double>& field,
+                                             double max_stress,
+                                             double impact_x,
+                                             double impact_y) const {
+    int n = sim_config_.grid_size;
+    field.resize(static_cast<size_t>(n * n));
+    double L = sim_config_.roof_length_m;
+    double W = sim_config_.roof_width_m;
+    double cx = std::max(0.0, std::min(L, impact_x)) / L * (n - 1);
+    double cy = std::max(0.0, std::min(W, impact_y)) / W * (n - 1);
+    double sigma = 2.0;
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            double d2 = (i - cx) * (i - cx) + (j - cy) * (j - cy);
+            field[static_cast<size_t>(i * n + j)] = max_stress * std::exp(-d2 / (2 * sigma * sigma));
+        }
+    }
+}
+
+ImpactSimulator::PlasticityTaskPtr ImpactSimulator::submit_plasticity_task(const SensorData& data) {
+    PlasticityTaskPtr task = std::make_shared<PlasticityTask>();
+    task->task_id = next_task_id_.fetch_add(1);
+    task->sensor_data = data;
+    task->material = get_material(data.protection_material);
+    task->jc = get_jc_params(data.protection_material);
+
+    {
+        std::lock_guard<std::mutex> lock(task_mutex_);
+        tasks_[task->task_id] = task;
+        task_queue_.push_back(task->task_id);
+    }
+
+    if (!workers_running_.load()) {
+        start_workers();
+    }
+
+    task_cv_.notify_one();
+    return task;
+}
+
+bool ImpactSimulator::is_task_complete(uint64_t task_id) const {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    auto it = tasks_.find(task_id);
+    if (it == tasks_.end()) {
+        return false;
+    }
+    return it->second->completed.load();
+}
+
+SimulationResult ImpactSimulator::get_task_result(uint64_t task_id, int timeout_ms) {
+    PlasticityTaskPtr task;
+    {
+        std::lock_guard<std::mutex> lock(task_mutex_);
+        auto it = tasks_.find(task_id);
+        if (it != tasks_.end()) {
+            task = it->second;
+        }
+    }
+
+    if (!task) {
+        return SimulationResult{};
+    }
+
+    if (timeout_ms < 0) {
+        while (!task->completed.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    } else {
+        int waited = 0;
+        while (!task->completed.load() && waited < timeout_ms) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            waited += 1;
+        }
+        if (!task->completed.load()) {
+            return SimulationResult{};
+        }
+    }
+
+    return task->result;
+}
+
+size_t ImpactSimulator::pending_tasks() const {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    return task_queue_.size();
+}
+
+void ImpactSimulator::set_thread_pool_size(size_t n) {
+    if (workers_running_.load()) {
+        return;
+    }
+    if (n == 0) n = 1;
+    thread_pool_size_ = n;
+}
+
+void ImpactSimulator::cleanup_completed_tasks() {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    auto it = tasks_.begin();
+    while (it != tasks_.end()) {
+        if (it->second->completed.load()) {
+            it = tasks_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void ImpactSimulator::remove_task(uint64_t task_id) {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    tasks_.erase(task_id);
+}
+
+void ImpactSimulator::run_plasticity_calc(PlasticityTask& task) {
+    const SensorData& data = task.sensor_data;
+    const MaterialProperties& mat = task.material;
+    const JohnsonCookParams& jc = task.jc;
+    SimulationResult& result = task.result;
+
+    result.simulation_id = task.task_id;
     result.vehicle_id = data.vehicle_id;
     result.timestamp_ms = data.timestamp_ms > 0 ? data.timestamp_ms : current_timestamp_ms();
     result.protection_material = data.protection_material;
     result.temperature_K = data.ambient_temp + 273.15;
-
-    MaterialProperties mat = get_material(data.protection_material);
-    JohnsonCookParams jc = get_jc_params(data.protection_material);
 
     double thickness_m = data.protection_thickness / 1000.0;
     if (thickness_m <= 0) thickness_m = 0.08;
@@ -229,48 +431,6 @@ SimulationResult ImpactSimulator::run_simulation(const SensorData& data) {
                                 impact_x, impact_y);
     generate_stress_field(result.stress_field, result.roof_von_mises_stress_mpa,
                           impact_x, impact_y);
-
-    return result;
-}
-
-void ImpactSimulator::generate_deformation_field(std::vector<double>& field,
-                                                  double max_deformation,
-                                                  double impact_x,
-                                                  double impact_y) const {
-    int n = sim_config_.grid_size;
-    field.resize(static_cast<size_t>(n * n));
-    double L = sim_config_.roof_length_m;
-    double W = sim_config_.roof_width_m;
-    double cx = std::max(0.0, std::min(L, impact_x)) / L * (n - 1);
-    double cy = std::max(0.0, std::min(W, impact_y)) / W * (n - 1);
-    double sigma = 1.8 + (max_deformation / 50.0);
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            double d2 = (i - cx) * (i - cx) + (j - cy) * (j - cy);
-            field[static_cast<size_t>(i * n + j)] = max_deformation * std::exp(-d2 / (2 * sigma * sigma));
-        }
-    }
-}
-
-void ImpactSimulator::generate_stress_field(std::vector<double>& field,
-                                             double max_stress,
-                                             double impact_x,
-                                             double impact_y) const {
-    int n = sim_config_.grid_size;
-    field.resize(static_cast<size_t>(n * n));
-    double L = sim_config_.roof_length_m;
-    double W = sim_config_.roof_width_m;
-    double cx = std::max(0.0, std::min(L, impact_x)) / L * (n - 1);
-    double cy = std::max(0.0, std::min(W, impact_y)) / W * (n - 1);
-    double sigma = 2.0;
-
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            double d2 = (i - cx) * (i - cx) + (j - cy) * (j - cy);
-            field[static_cast<size_t>(i * n + j)] = max_stress * std::exp(-d2 / (2 * sigma * sigma));
-        }
-    }
 }
 
 }

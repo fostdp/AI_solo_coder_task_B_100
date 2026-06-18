@@ -3,7 +3,9 @@
 #include "common/data_types.h"
 #include "config/config_loader.h"
 #include "vehicle_comparator/vehicle_comparator.h"
+#include "era_comparator/era_comparator.h"
 #include "formation_optimizer/formation_optimizer.h"
+#include "vr_assault/vr_assault_engine.h"
 #include "user_session/user_session_manager.h"
 #include "impact_simulator/impact_simulator.h"
 
@@ -74,6 +76,24 @@ inline std::shared_ptr<UserSessionManager> create_test_user_session_manager() {
     auto config = create_test_config_loader();
     auto simulator = std::make_shared<ImpactSimulator>(config);
     return std::make_shared<UserSessionManager>(config, simulator);
+}
+
+inline std::shared_ptr<EraComparator> create_test_era_comparator() {
+    auto config = create_test_config_loader();
+    auto simulator = std::make_shared<ImpactSimulator>(config);
+    auto vehicle_comparator = std::make_shared<VehicleComparator>(config, simulator);
+    return std::make_shared<EraComparator>(config, vehicle_comparator);
+}
+
+inline std::shared_ptr<VRAssaultEngine> create_test_vr_assault_engine() {
+    auto config = create_test_config_loader();
+    auto simulator = std::make_shared<ImpactSimulator>(config);
+    return std::make_shared<VRAssaultEngine>(config, simulator);
+}
+
+inline std::shared_ptr<ImpactSimulator> create_test_impact_simulator() {
+    auto config = create_test_config_loader();
+    return std::make_shared<ImpactSimulator>(config);
 }
 
 }

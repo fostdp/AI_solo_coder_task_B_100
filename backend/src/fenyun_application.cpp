@@ -63,6 +63,8 @@ bool FenyunApplication::initialize() {
     vehicle_comparator_ = std::make_shared<VehicleComparator>(config_, impact_simulator_);
     formation_optimizer_ = std::make_shared<FormationOptimizer>(config_);
     user_session_manager_ = std::make_shared<UserSessionManager>(config_, impact_simulator_);
+    era_comparator_ = std::make_shared<EraComparator>(config_, vehicle_comparator_);
+    vr_assault_engine_ = std::make_shared<VRAssaultEngine>(config_, impact_simulator_);
 
     alarm_mqtt_ = std::make_shared<AlarmMqtt>(config_);
     alarm_mqtt_->set_input_queue(simulation_queue_);
@@ -72,7 +74,7 @@ bool FenyunApplication::initialize() {
 
     clickhouse_client_ = std::make_shared<ClickHouseClient>(config_);
 
-    std::cout << "[Application] Modules initialized (incl. vehicle_comparator, formation_optimizer, user_session)" << std::endl;
+    std::cout << "[Application] Modules initialized (incl. vehicle_comparator, formation_optimizer, user_session, era_comparator, vr_assault_engine)" << std::endl;
     return true;
 }
 
@@ -94,7 +96,7 @@ void FenyunApplication::start() {
     eval_writer_ = std::thread(&FenyunApplication::evaluation_writer_loop, this);
     session_cleanup_ = std::thread(&FenyunApplication::session_cleanup_loop, this);
 
-    std::cout << "[Application] All modules started (incl. vehicle_comparator, formation_optimizer, user_session)" << std::endl;
+    std::cout << "[Application] All modules started (incl. vehicle_comparator, formation_optimizer, user_session, era_comparator, vr_assault_engine)" << std::endl;
 }
 
 void FenyunApplication::stop() {
@@ -111,12 +113,14 @@ void FenyunApplication::stop() {
     if (clickhouse_client_) clickhouse_client_->disconnect();
 
     uint64_t sessions = user_session_manager_ ? user_session_manager_->total_sessions_created() : 0;
+    uint64_t vr_sessions = vr_assault_engine_ ? vr_assault_engine_->total_sessions() : 0;
     std::cout << "[Application] All modules stopped" << std::endl;
     std::cout << "[Application] Stats: sensors=" << sensors_stored_.load()
               << " sims=" << sims_stored_.load()
               << " alerts=" << alerts_stored_.load()
               << " evals=" << evaluations_stored_.load()
-              << " sessions=" << sessions << std::endl;
+              << " sessions=" << sessions
+              << " vr_sessions=" << vr_sessions << std::endl;
 }
 
 void FenyunApplication::session_cleanup_loop() {
@@ -124,6 +128,9 @@ void FenyunApplication::session_cleanup_loop() {
         std::this_thread::sleep_for(std::chrono::seconds(60));
         if (user_session_manager_) {
             user_session_manager_->cleanup_expired_sessions(300000);
+        }
+        if (vr_assault_engine_) {
+            vr_assault_engine_->cleanup_expired(300000);
         }
     }
 }

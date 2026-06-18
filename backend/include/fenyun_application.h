@@ -9,6 +9,8 @@
 #include "vehicle_comparator/vehicle_comparator.h"
 #include "formation_optimizer/formation_optimizer.h"
 #include "user_session/user_session_manager.h"
+#include "era_comparator/era_comparator.h"
+#include "vr_assault/vr_assault_engine.h"
 #include "alarm_mqtt/alarm_mqtt.h"
 #include "storage/clickhouse_client.h"
 
@@ -40,6 +42,8 @@ public:
     std::shared_ptr<VehicleComparator> vehicle_comparator() { return vehicle_comparator_; }
     std::shared_ptr<FormationOptimizer> formation_optimizer() { return formation_optimizer_; }
     std::shared_ptr<UserSessionManager> user_session_manager() { return user_session_manager_; }
+    std::shared_ptr<EraComparator> era_comparator() { return era_comparator_; }
+    std::shared_ptr<VRAssaultEngine> vr_assault_engine() { return vr_assault_engine_; }
     std::shared_ptr<AlarmMqtt> alarm_mqtt() { return alarm_mqtt_; }
     std::shared_ptr<ClickHouseClient> clickhouse_client() { return clickhouse_client_; }
 
@@ -67,6 +71,8 @@ private:
     std::shared_ptr<VehicleComparator> vehicle_comparator_;
     std::shared_ptr<FormationOptimizer> formation_optimizer_;
     std::shared_ptr<UserSessionManager> user_session_manager_;
+    std::shared_ptr<EraComparator> era_comparator_;
+    std::shared_ptr<VRAssaultEngine> vr_assault_engine_;
     std::shared_ptr<AlarmMqtt> alarm_mqtt_;
     std::shared_ptr<ClickHouseClient> clickhouse_client_;
 

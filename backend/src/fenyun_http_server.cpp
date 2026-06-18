@@ -211,6 +211,8 @@ std::string FenyunHttpServer::handle_get(const std::string& path,
     auto vc = app->vehicle_comparator();
     auto fo = app->formation_optimizer();
     auto usm = app->user_session_manager();
+    auto ec = app->era_comparator();
+    auto vr = app->vr_assault_engine();
 
     if (path == "/api/health") {
         json::Value r(json::Object{});
@@ -534,6 +536,36 @@ std::string FenyunHttpServer::handle_get(const std::string& path,
         return make_json_response(200, result.dump());
     }
 
+    if (path == "/api/era-comparison/latest") {
+        if (!ec) return make_response(500, "text/plain", "EraComparator not ready");
+        json::Value result(json::Object{});
+        result["data"] = json::Value();
+        return make_json_response(200, result.dump());
+    }
+
+    if (path == "/api/era-comparison/timeline") {
+        if (!ec) return make_response(500, "text/plain", "EraComparator not ready");
+        double rock_mass_kg = 50.0;
+        double rock_velocity_ms = 15.0;
+        if (params.count("rock_mass_kg")) rock_mass_kg = std::stod(params["rock_mass_kg"]);
+        if (params.count("rock_velocity_ms")) rock_velocity_ms = std::stod(params["rock_velocity_ms"]);
+        auto timeline = ec->build_protection_timeline(rock_mass_kg, rock_velocity_ms);
+        json::Value arr(json::Array{});
+        for (const auto& entry : timeline) {
+            json::Value item(json::Object{});
+            item["year"] = static_cast<int64_t>(entry.year);
+            item["vehicle_id"] = entry.vehicle_id;
+            item["display_name"] = entry.display_name;
+            item["era"] = entry.era;
+            item["protection_score"] = entry.protection_score;
+            item["milestone"] = entry.milestone;
+            arr.append(item);
+        }
+        json::Value result(json::Object{});
+        result["data"] = arr;
+        return make_json_response(200, result.dump());
+    }
+
     if (path == "/api/formation/types") {
         json::Value arr(json::Array{});
         json::Value t1(json::Object{});
@@ -634,6 +666,92 @@ std::string FenyunHttpServer::handle_get(const std::string& path,
         json::Value result(json::Object{});
         result["data"] = arr;
         return make_json_response(200, result.dump());
+    }
+
+    if (path == "/api/vr/sessions") {
+        if (!vr) return make_response(500, "text/plain", "VRAssaultEngine not ready");
+        auto sessions = vr->active_sessions();
+        json::Value arr(json::Array{});
+        for (const auto& s : sessions) {
+            json::Value item(json::Object{});
+            item["session_id"] = s.session_id;
+            item["user_nickname"] = s.user_nickname;
+            item["vehicle_type"] = s.vehicle_type;
+            item["created_ms"] = s.created_ms;
+            item["last_active_ms"] = s.last_active_ms;
+            arr.append(item);
+        }
+        json::Value result(json::Object{});
+        result["data"] = arr;
+        return make_json_response(200, result.dump());
+    }
+
+    if (path.size() > 20 && path.substr(0, 20) == "/api/vr/session/" && path.find("/state") != std::string::npos) {
+        if (!vr) return make_response(500, "text/plain", "VRAssaultEngine not ready");
+        size_t state_pos = path.find("/state");
+        std::string sid = path.substr(20, state_pos - 20);
+        if (!vr->has_session(sid)) {
+            return make_response(404, "text/plain", "Session not found");
+        }
+        auto st = vr->get_state(sid);
+        json::Value item(json::Object{});
+        item["session_id"] = st.session_id;
+        item["position_x"] = st.position_x;
+        item["position_y"] = st.position_y;
+        item["heading_deg"] = st.heading_deg;
+        item["speed_ms"] = st.speed_ms;
+        item["health_percent"] = st.health_percent;
+        item["armor_integrity_percent"] = st.armor_integrity_percent;
+        item["impacts_received"] = static_cast<int64_t>(st.impacts_received);
+        item["distance_traveled_m"] = st.distance_traveled_m;
+        item["timestamp_ms"] = st.timestamp_ms;
+        item["roll_deg"] = st.roll_deg;
+        item["pitch_deg"] = st.pitch_deg;
+        item["vertical_bounce_mm"] = st.vertical_bounce_mm;
+        item["steering_force_feedback_nm"] = st.steering_force_feedback_nm;
+        item["throttle_force_feedback_n"] = st.throttle_force_feedback_n;
+        json::Value vib(json::Object{});
+        vib["magnitude_level"] = static_cast<int64_t>(st.current_vibration.magnitude_level);
+        vib["amplitude_mm"] = st.current_vibration.amplitude_mm;
+        vib["pitch_deg"] = st.current_vibration.pitch_deg;
+        vib["roll_deg"] = st.current_vibration.roll_deg;
+        vib["yaw_deg"] = st.current_vibration.yaw_deg;
+        vib["frequency_hz"] = st.current_vibration.frequency_hz;
+        vib["duration_ms"] = st.current_vibration.duration_ms;
+        vib["decay_rate_1_s"] = st.current_vibration.decay_rate_1_s;
+        vib["force_feedback_n"] = st.current_vibration.force_feedback_n;
+        vib["seat_acceleration_g"] = st.current_vibration.seat_acceleration_g;
+        vib["visual_screen_shake_px"] = st.current_vibration.visual_screen_shake_px;
+        vib["audio_impact_intensity"] = st.current_vibration.audio_impact_intensity;
+        vib["start_timestamp_ms"] = st.current_vibration.start_timestamp_ms;
+        item["current_vibration"] = vib;
+        json::Value result(json::Object{});
+        result["data"] = item;
+        return make_json_response(200, result.dump());
+    }
+
+    if (path.size() > 20 && path.substr(0, 20) == "/api/vr/session/" && path.find("/result") != std::string::npos) {
+        if (!vr) return make_response(500, "text/plain", "VRAssaultEngine not ready");
+        size_t result_pos = path.find("/result");
+        std::string sid = path.substr(20, result_pos - 20);
+        if (!vr->has_session(sid)) {
+            return make_response(404, "text/plain", "Session not found");
+        }
+        auto res = vr->get_round_result(sid);
+        json::Value r(json::Object{});
+        r["session_id"] = res.session_id;
+        r["start_ms"] = res.start_ms;
+        r["end_ms"] = res.end_ms;
+        r["final_health"] = res.final_health_percent;
+        r["total_distance"] = res.total_distance_m;
+        r["total_attacks"] = static_cast<int64_t>(res.total_attacks_sustained);
+        r["total_damage"] = res.total_damage_taken;
+        r["waves_survived"] = static_cast<int64_t>(res.waves_survived);
+        r["score"] = res.score;
+        r["rank"] = res.rank;
+        json::Value wrapper(json::Object{});
+        wrapper["data"] = r;
+        return make_json_response(200, wrapper.dump());
     }
 
     return make_response(404, "text/plain", "Not Found");

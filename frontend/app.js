@@ -1,6 +1,7 @@
 import { AssaultCart3D } from './assault_cart_3d.js';
 import { ProtectionPanel } from './protection_panel.js';
 import { VehicleComparisonView } from './vehicle_comparison_view.js';
+import { EraComparisonView } from './era_comparison_view.js';
 import { FormationOptimizerView } from './formation_optimizer_view.js';
 import { VirtualDrivingView } from './virtual_driving_view.js';
 
@@ -55,10 +56,10 @@ window.addEventListener('DOMContentLoaded', () => {
             wrap.style.margin = '0 auto';
             featureContainer.appendChild(wrap);
             if (!views.crossEra) {
-                views.crossEra = new VehicleComparisonView('#crossera-view', API_BASE);
-                views.crossEra.init(true);
+                views.crossEra = new EraComparisonView('#crossera-view', API_BASE);
+                views.crossEra.init();
             } else {
-                views.crossEra.init(true);
+                views.crossEra.init();
             }
         } else if (tabName === 'formation') {
             const wrap = document.createElement('div');
