@@ -62,6 +62,10 @@ struct SimulationResult {
     std::string failure_mode;
     std::vector<double> deformation_field;
     std::vector<double> stress_field;
+    double strain_rate;
+    double dynamic_yield_strength_mpa;
+    double temperature_K;
+    std::string protection_material;
 };
 
 struct AlertRecord {

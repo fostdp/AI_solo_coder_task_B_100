@@ -399,6 +399,17 @@ void FenYunServer::http_server_worker() {
                 json::Value stress_field(json::Array{});
                 for (double v : sim.stress_field) stress_field.append(v);
 
+                auto jc_params = simulator_->get_jc_params(sim.protection_material);
+                json::Value jc(json::Object{});
+                jc["A_Pa"] = jc_params.A;
+                jc["B_Pa"] = jc_params.B;
+                jc["n"] = jc_params.n;
+                jc["C"] = jc_params.C;
+                jc["m"] = jc_params.m;
+                jc["T_melt_K"] = jc_params.T_melt;
+                jc["T_ref_K"] = jc_params.T_ref;
+                jc["eps_dot_0"] = jc_params.eps_dot_0;
+
                 json::Value r(json::Object{});
                 r["roof_max_deformation_mm"] = sim.roof_max_deformation_mm;
                 r["roof_plastic_strain"] = sim.roof_plastic_strain;
@@ -409,6 +420,11 @@ void FenYunServer::http_server_worker() {
                 r["penetration_depth_mm"] = sim.penetration_depth_mm;
                 r["is_penetrated"] = sim.is_penetrated;
                 r["failure_mode"] = sim.failure_mode;
+                r["strain_rate"] = sim.strain_rate;
+                r["dynamic_yield_strength_mpa"] = sim.dynamic_yield_strength_mpa;
+                r["temperature_K"] = sim.temperature_K;
+                r["johnson_cook_params"] = jc;
+                r["protection_material"] = sim.protection_material;
                 r["deformation_field"] = def_field;
                 r["stress_field"] = stress_field;
 
@@ -418,8 +434,19 @@ void FenYunServer::http_server_worker() {
             } else if (path == "/api/evaluate" && method == "POST") {
                 json::Value root;
                 uint32_t vid = 1;
+                int expert_count = 5;
+                bool enable_group = true;
                 if (parse_json_body(body, root)) {
                     vid = static_cast<uint32_t>(root.has("vehicle_id") ? root["vehicle_id"].asUInt() : 1);
+                    if (root.has("expert_count")) expert_count = root["expert_count"].asInt();
+                    if (root.has("enable_group_decision")) enable_group = root["enable_group_decision"].asBool();
+                }
+                if (enable_group && expert_count > 1) {
+                    ahp_evaluator_->enable_group_decision(true);
+                    ahp_evaluator_->set_expert_count(expert_count);
+                    ahp_evaluator_->generate_expert_opinions(expert_count);
+                } else {
+                    ahp_evaluator_->enable_group_decision(false);
                 }
                 auto evals = run_ahp_evaluation(vid);
                 json::Value arr(json::Array{});
@@ -440,6 +467,34 @@ void FenYunServer::http_server_worker() {
                 json::Value result(json::Object{});
                 result["data"] = arr;
                 result["consistency_ratio"] = ahp_evaluator_->get_consistency_ratio();
+                result["criteria_weights"] = json::Value(json::Object{});
+                auto weights = ahp_evaluator_->get_criteria_weights();
+                for (const auto& [k, v] : weights) {
+                    result["criteria_weights"][k] = v;
+                }
+                if (enable_group && expert_count > 1) {
+                    auto gr = ahp_evaluator_->get_group_decision_report();
+                    json::Value exp_json(json::Array{});
+                    for (const auto& exp : gr.experts) {
+                        json::Value ej(json::Object{});
+                        ej["name"] = exp.name;
+                        ej["title"] = exp.title;
+                        ej["authority_weight"] = exp.authority_weight;
+                        ej["consistency_ratio"] = exp.consistency_ratio;
+                        ej["passed"] = exp.passed;
+                        exp_json.append(ej);
+                    }
+                    result["group_consensus_index"] = gr.consensus_index;
+                    result["group_cr"] = gr.group_cr;
+                    result["passed_experts"] = static_cast<int64_t>(gr.passed_experts);
+                    result["total_experts"] = static_cast<int64_t>(gr.total_experts);
+                    result["experts"] = exp_json;
+                    result["expert_count"] = static_cast<int64_t>(expert_count);
+                    result["enable_group_decision"] = true;
+                } else {
+                    result["expert_count"] = 1;
+                    result["enable_group_decision"] = false;
+                }
                 response_body = result.dump();
             } else if (path == "/api/ahp/weights" && method == "GET") {
                 auto weights = ahp_evaluator_->get_criteria_weights();
@@ -480,6 +535,33 @@ void FenYunServer::http_server_worker() {
                     mats[mat_names[i]] = m;
                 }
                 cfg["materials"] = mats;
+
+                json::Value jc_db(json::Object{});
+                {
+                    json::Value c(json::Object{});
+                    c["A_Pa"] = 20e6; c["B_Pa"] = 50e6; c["n"] = 0.55; c["C"] = 0.035; c["m"] = 1.2;
+                    c["T_melt_K"] = 500.0; c["T_ref_K"] = 298.15; c["eps_dot_0"] = 1.0;
+                    jc_db["cowhide"] = c;
+                }
+                {
+                    json::Value c(json::Object{});
+                    c["A_Pa"] = 60e6; c["B_Pa"] = 120e6; c["n"] = 0.45; c["C"] = 0.06; c["m"] = 1.0;
+                    c["T_melt_K"] = 600.0; c["T_ref_K"] = 298.15; c["eps_dot_0"] = 1.0;
+                    jc_db["wood"] = c;
+                }
+                {
+                    json::Value c(json::Object{});
+                    c["A_Pa"] = 235e6; c["B_Pa"] = 380e6; c["n"] = 0.32; c["C"] = 0.022; c["m"] = 0.55;
+                    c["T_melt_K"] = 1811.0; c["T_ref_K"] = 298.15; c["eps_dot_0"] = 1.0;
+                    jc_db["iron"] = c;
+                }
+                {
+                    json::Value c(json::Object{});
+                    c["A_Pa"] = 120e6; c["B_Pa"] = 220e6; c["n"] = 0.40; c["C"] = 0.03; c["m"] = 0.85;
+                    c["T_melt_K"] = 700.0; c["T_ref_K"] = 298.15; c["eps_dot_0"] = 1.0;
+                    jc_db["composite"] = c;
+                }
+                cfg["johnson_cook_database"] = jc_db;
 
                 json::Value result(json::Object{});
                 result["config"] = cfg;
